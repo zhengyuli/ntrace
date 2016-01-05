@@ -2,8 +2,7 @@ package main
 
 import (
 	"fmt"
-	"errors"
-	"gconf/conf"
+	"goconf/conf"
 )
 
 type properties struct {
@@ -13,13 +12,16 @@ type properties struct {
 	// Network device to sniff
 	netDev string
 
+	// File output settings
+	outputFile string
+
 	// Splunk output settings
 	// Splunk index for analysis record
 	splunkIndex string
 	// Splunk source for analysis record
 	splunkSource string
 	// Splunk sourcetype for analysis record
-	splunkSourcetype
+	splunkSourcetype string
 	// Splunk auth token for http event collector
 	splunkAuthToken string
 	// Splunk url for http event collector
@@ -37,74 +39,81 @@ type properties struct {
 var globalProperties properties
 
 func initProperties (configFile string) (err error) {
-	c, err = conf.ReadConfigFile(configFile)
+	c, err := conf.ReadConfigFile(configFile)
 	if err != nil {
 		return
 	}
 
-    // Get managementService port
-	globalProperties.managementServicePort, err = c.GetInt("managementService", "port")
+	// Get management_service port
+	port, err := c.GetInt("management_service", "port")
+	if err != nil {
+		return
+	}
+	globalProperties.managementServicePort = uint16(port)
+
+	// Get network device
+	globalProperties.netDev, err = c.GetString("input", "netdev")
 	if err != nil {
 		return
 	}
 
-    // Get liveInput interface
-	globalProperties.netDev, err = c.GetString("input", "netDev")
+	// Get file_output settings
+	if c.HasSection("file_output") {
+		// Get file_output file
+		globalProperties.outputFile, err = c.GetString("file_output", "file")
+		if err != nil {
+			return
+		}
+	}
+
+	// Get splunk_output settings
+	if c.HasSection("splunk_output") {
+		// Get splunk_output index
+		globalProperties.splunkIndex, err = c.GetString("splunk_output", "index")
+		if err != nil {
+			return
+		}
+
+		// Get splunk_utput source
+		globalProperties.splunkSource, err = c.GetString("splunk_output", "source")
+		if err != nil {
+			return
+		}
+
+		// Get splunk_output sourcetype
+		globalProperties.splunkSourcetype, err = c.GetString("splunk_output", "sourcetype")
+		if err != nil {
+			return
+		}
+
+		// Get splunk output auth_token
+		globalProperties.splunkAuthToken, err = c.GetString("splunk_output", "auth_token")
+		if err != nil {
+			return
+		}
+
+		// Get splunk output url
+		globalProperties.splunkUrl, err = c.GetString("splunk_output", "url")
+		if err != nil {
+			return
+		}
+	}
+
+    // Get log dir
+	globalProperties.logDir, err = c.GetString("log", "dir")
 	if err != nil {
 		return
 	}
 
-    // Get fileOutput outputFile
-	globalProperties.outputFile, err = c.GetString("fileOutput", "outputFile")
-	if err != nil {
-		return
-	}
-
-    // Get splunkOutput index
-	globalProperties.splunkIndex, err = c.GetString("splunkOutput", "index")
-	if err != nil {
-		return
-	}
-
-    // Get splunkOutput source
-	globalProperties.splunkSource, err = c.GetString("splunkOutput", "source")
-	if err != nil {
-		return
-	}
-
-    // Get splunkOutput sourcetype
-	globalProperties.splunkSourcetype, err = c.GetString("splunkOutput", "sourcetype")
-	if err != nil {
-		return
-	}
-
-    // Get splunkOutput authToken
-	globalProperties.splunkAuthToken, err = c.GetString("splunkOutput", "authToken")
-	if err != nil {
-		return
-	}
-
-    // Get splunkOutput url
-	globalProperties.splunkUrl, err = c.GetString("splunkOutput", "url")
-	if err != nil {
-		return
-	}
-
-    // Get log logDir
-	globalProperties.logDir, err = c.GetString("log", "logDir")
-	if err != nil {
-		return
-	}
-
-    // Get log logFile
-	globalProperties.logFile, err = c.GetString("log", "logFile")
+    // Get log file
+	globalProperties.logFile, err = c.GetString("log", "file")
 	if err != nil {
 		return
 	}
 
 
-    // Get log logLevel
-	globalProperties.logLevel, err = c.GetString("log", "logLevel")
+    // Get log level
+	globalProperties.logLevel, err = c.GetInt("log", "level")
 	if err != nil {
 		return
 	}
@@ -125,9 +134,4 @@ func displayPropertiesDetail() {
     fmt.Printf("    logDir: %v\n", globalProperties.logDir)
     fmt.Printf("    logFileName: %v\n", globalProperties.logFile)
     fmt.Printf("    logLevel: %v\n}\n", globalProperties.logLevel)
-}
-
-func main() {
-	initProperties("./ntrace.conf")
-	displayPropertiesDetail()
 }

@@ -1,0 +1,172 @@
+#+TITLE: Analysis record
+#+AUTHOR: zhengyu li
+#+OPTIONS: ^:nil \n:t
+
+* Analysis record
+** Analysis record common fields
+|-----------+--------+--------------------------------------------------------------------------------|
+| key       | type   | description                                                                    |
+|-----------+--------+--------------------------------------------------------------------------------|
+| /         | <      | <                                                                              |
+| timestamp | string | Timestamp readable string                                                      |
+| type      | string | Analysis record type: [TOPOLOGY_ENTRY, APP_SERVICE, ICMP_ERROR, TCP_BREAKDOWN] |
+|-----------+--------+--------------------------------------------------------------------------------|
+
+** Topology entry
+|-----------+--------+-------------|
+| key       | type   | description |
+|-----------+--------+-------------|
+| /         | <      | <           |
+| source_ip | string | source ip   |
+| dest_ip   | string | dest ip     |
+|-----------+--------+-------------|
+
+** Application service
+|-------+---------+--------------------------------|
+| key   | type    | description                    |
+|-------+---------+--------------------------------|
+| /     | <       | <                              |
+| proto | string  | Application service proto type |
+| ip    | string  | Application service ip         |
+| port  | integer | Application service port       |
+|-------+---------+--------------------------------|
+
+** Icmp error
+|-------------------+---------+------------------------------|
+| key               | type    | description                  |
+|-------------------+---------+------------------------------|
+| /                 | <       | <                            |
+| error_type        | string  | Icmp error type              |
+| error_code        | string  | Icmp error code              |
+| dest_unreach_ip   | string  | Icmp error dest unreach ip   |
+| dest_unreach_port | integer | Icmp error dest unreach port |
+|-------------------+---------+------------------------------|
+
+** Tcp breakdown
+*** Tcp breakdown common fields
+|---------------------------+---------+-------------------------------------------------------------|
+| key                       | type    | description                                                 |
+|---------------------------+---------+-------------------------------------------------------------|
+| /                         | <       | <                                                           |
+| proto                     | string  | Tcp application level protocol type                         |
+| source_ip                 | string  | Source ip                                                   |
+| source_port               | integer | Source port                                                 |
+| service_ip                | string  | Service ip                                                  |
+| service_port              | integer | Service port                                                |
+| tcp_connection_id         | string  | Tcp connection id                                           |
+| tcp_state                 | integer | Tcp state                                                   |
+| tcp_retries               | integer | Tcp sync retries                                            |
+| tcp_retries_latency       | integer | Tcp sync retries latency in milliseconds                    |
+| tcp_duplicate_synacks     | integer | Tcp duplicate syn/ack packages                              |
+| tcp_rtt                   | integer | Tcp RTT                                                     |
+| tcp_mss                   | integer | Tcp mss (maxium segment size)                               |
+| tcp_connection_latency    | integer | Tcp connection latency in milliseconds                      |
+| tcp_c2s_bytes             | integer | Tcp client to server bytes                                  |
+| tcp_s2c_bytes             | integer | Tcp server to client bytes                                  |
+| tcp_total_bytes           | integer | Tcp total bytes                                             |
+| tcp_c2s_packets           | integer | Tcp client to server packets                                |
+| tcp_s2c_packets           | integer | Tcp server to client packets                                |
+| tcp_total_packets         | integer | Tcp total packets                                           |
+| tcp_tiny_packets          | integer | Tcp tiny packets                                            |
+| tcp_paws_packets          | integer | Tcp PAWS (Protect Against Wrapped Sequence numbers) packets |
+| tcp_retransmitted_packets | integer | Tcp retransmitted packets                                   |
+| tcp_out_of_order_packets  | integer | Tcp out of order packets                                    |
+| tcp_zero_windows          | integer | Tcp zero windows                                            |
+| tcp_duplicate_acks        | integer | Tcp duplicate acks                                          |
+|---------------------------+---------+-------------------------------------------------------------|
+Notes: Tcp state
+#+BEGIN_SRC c
+  typedef enum {
+      TCP_CONNECTED,            /**< Tcp session connected */
+      TCP_DATA_EXCHANGING,      /**< Tcp session data exchanging */
+      TCP_CLOSED,               /**< Tcp session closed */
+      TCP_RESET_TYPE1,          /**< Tcp session reset type1 (from client and before connected) */
+      TCP_RESET_TYPE2,          /**< Tcp session reset type2 (from server and before connected) */
+      TCP_RESET_TYPE3,          /**< Tcp session reset type3 (from client and after connected) */
+      TCP_RESET_TYPE4           /**< Tcp session reset type4 (from server and after connected) */
+  } tcpState;
+#+END_SRC
+
+*** Default breakdown interface
+|------------------------+---------+-----------------------------|
+| key                    | type    | description                 |
+|------------------------+---------+-----------------------------|
+| /                      | <       | <                           |
+| default_exchange_size  | integer | Default data size exchanged |
+| default_server_latency | integer | Default server latency      |
+|------------------------+---------+-----------------------------|
+
+*** Http breakdown interface
+|---------------------------+---------+-----------------------------------|
+| name                      | type    | description                       |
+|---------------------------+---------+-----------------------------------|
+| /                         | <       | <                                 |
+| http_request_version      | string  | Http protocol request version     |
+| http_method               | string  | Http request method               |
+| http_url                  | string  | Http request url                  |
+| http_host                 | string  | Http server host                  |
+| http_request_line         | string  | Http request method + host + url  |
+| http_user_agent           | string  | Http request user agent           |
+| http_referer              | string  | Http request referer              |
+| http_accept               | string  | Http request accept sourses       |
+| http_accept_language      | string  | Http request accept language      |
+| http_accept_encoding      | string  | Http request accept encoding      |
+| http_x_forwarded_for      | string  | Http request x forwarded for      |
+| http_request_connection   | string  | Http request connection           |
+| http_response_version     | string  | Http protocol response version    |
+| http_content_type         | string  | Http response content type        |
+| http_content_disposition  | string  | Http response content disposition |
+| http_transfer_encoding    | string  | Http response transfer encoding   |
+| http_response_connection  | string  | Http response connection          |
+| http_state                | string  | Http state                        |
+| http_status_code          | integer | Http status code                  |
+| http_request_header_size  | integer | Http request header size          |
+| http_request_body_size    | integer | Http request body size            |
+| http_response_header_size | integer | Http response header size         |
+| http_response_body_size   | integer | Http response body size           |
+| http_server_latency       | integer | Http server latency               |
+| http_download_latency     | integer | Http download latency             |
+| http_response_latency     | integer | Http response latency             |
+|---------------------------+---------+-----------------------------------|
+Notes: Http state
+#+BEGIN_SRC c
+  typedef enum {
+      HTTP_OK = 0,
+      HTTP_ERROR,
+      HTTP_RESET_TYPE1,         /**< Http reset during request */
+      HTTP_RESET_TYPE2,         /**< Http reset before response */
+      HTTP_RESET_TYPE3,         /**< Http reset during response */
+      HTTP_RESET_TYPE4          /**< Http reset without request */
+  } httpState;
+#+END_SRC
+
+*** Mysql breakdown interface
+|-------------------------+----------------+-------------------------|
+| breakdown name          | breakdown type | description             |
+|-------------------------+----------------+-------------------------|
+| /                       | <              | <                       |
+| mysql_server_version    | string         | Mysql server version    |
+| mysql_user_name         | string         | Mysql user name         |
+| mysql_connection_id     | integer        | Mysql connection id     |
+| mysql_request_statement | string         | Mysql request statement |
+| mysql_state             | string         | Mysql state             |
+| mysql_error_code        | integer        | Mysql error code        |
+| mysql_sql_state         | integer        | Mysql sql state         |
+| mysql_error_message     | string         | Mysql error message     |
+| mysql_request_size      | integer        | Mysql request size      |
+| mysql_response_size     | integer        | Mysql response size     |
+| mysql_server_latency    | integer        | Mysql server latency    |
+| mysql_download_latency  | integer        | Mysql download latency  |
+| mysql_response_latency  | integer        | Mysql response latency  |
+|-------------------------+----------------+-------------------------|
+ Notes: Mysql state
+ #+BEGIN_SRC c
+   typedef enum {
+       MYSQL_OK = 0,
+       MYSQL_ERROR,
+       MYSQL_RESET_TYPE1,        /**< Mysql reset during request */
+       MYSQL_RESET_TYPE2,        /**< Mysql reset before response */
+       MYSQL_RESET_TYPE3,        /**< Mysql reset during response */
+       MYSQL_RESET_TYPE4         /**< Mysql reset without request */
+   } mysqlState;
+ #+END_SRC
