@@ -111,14 +111,13 @@ func initProperties (configFile string) (err error) {
 		return
 	}
 
-
     // Get log level
 	globalProperties.logLevel, err = c.GetInt("log", "level")
 	if err != nil {
 		return
 	}
 
-	return nil
+	return
 }
 
 func displayPropertiesDetail() {

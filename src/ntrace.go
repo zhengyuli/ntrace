@@ -13,18 +13,13 @@ func main() {
 		return
 	}
 
-	err = initNetDev()
-	if err != nil {
-		fmt.Printf("Init network device error: %v.\n", err)
-		return
-	}
-
 	err = initZmqHub()
 	if err != nil {
 		fmt.Printf("Init zmq hub error: %v.\n", err)
 		return
 	}
 
+	rawCaptureService()
+
 	destroyZmqHub()
-	destroyNetDev()
 }

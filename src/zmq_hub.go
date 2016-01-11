@@ -270,7 +270,7 @@ func initZmqHub() (err error) {
             goto err
         }
     }
-    return nil
+    return
 
 err:
     for i := 0; i < globalZmqHub.tcpProcessThreadsNum; i++ {
@@ -320,7 +320,7 @@ err:
     }
 
     globalZmqHub.zmqCtxt.Close()
-	return err
+	return
 }
 
 func destroyZmqHub() {
