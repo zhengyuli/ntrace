@@ -1,4 +1,4 @@
-package sniffer
+package pcap
 
 /*
 #cgo linux LDFLAGS: -lpcap
@@ -31,15 +31,21 @@ type Pcap struct {
     pcapPtr *C.pcap_t
 }
 
-func (p *Pcap) Datalink() (datalink int, datalinkName string) {
-    datalink = int(C.pcap_datalink(p.pcapPtr))
-    name := C.pcap_datalink_val_to_name(C.int(datalink))
-    if name != nil {
-        datalinkName = C.GoString(name)
-    } else {
-        datalinkName = ""
-    }
-    return
+type Packet struct {
+	Time time.Time
+	CapLen uint32
+	Len uint32
+	Data []byte
+}
+
+type Stats struct {
+	PktsRecvd uint32
+	PktsDropped uint32
+	PktsIfDropped uint32
+}
+
+func (p *Pcap) Datalink() (int) {
+    return int(C.pcap_datalink(p.pcapPtr))
 }
 
 func (p *Pcap) SetFilter(filter string) error {
@@ -60,7 +66,7 @@ func (p *Pcap) SetFilter(filter string) error {
     return nil
 }
 
-func (p *Pcap) NextEx() (pkt *Packet, err error) {
+func (p *Pcap) NextPacket() (pkt *Packet, err error) {
     var pkthdr *C.struct_pcap_pkthdr
     var pktData *C.u_char
 
@@ -89,7 +95,7 @@ func (p *Pcap) Stats() (stats *Stats, err error) {
 
     stats = new(Stats)
     stats.PktsRecvd = uint32(cstats.ps_recv)
-    stats.PktsIfDropped = uint32(cstats.ps_drop)
+    stats.PktsDropped = uint32(cstats.ps_drop)
     stats.PktsIfDropped = uint32(cstats.ps_ifdrop)
     return
 }
@@ -102,26 +108,20 @@ func (p *Pcap) getError() error {
     return errors.New(C.GoString(C.pcap_geterr(p.pcapPtr)))
 }
 
-func PcapOpenLive(device string, capLen int,
-    promisc bool, timeout int) (handle Sniffer, err error) {
+func PcapOpenLive(device string) (handle *Pcap, err error) {
     var dev *C.char
     dev = C.CString(device)
     defer C.free(unsafe.Pointer(dev))
-
-    var pro int
-    if promisc {
-        pro = 1
-    }
 
     var errBuf *C.char
     errBuf = (*C.char)(C.calloc(ERRBUF_SIZE, 1))
     defer C.free(unsafe.Pointer(errBuf))
 
     tmp := new(Pcap)
-    tmp.pcapPtr = C.pcap_open_live(dev, C.int(capLen),
-        C.int(pro), C.int(timeout), errBuf)
+    tmp.pcapPtr = C.pcap_open_live(dev,
+		C.int(65535), C.int(1), C.int(500), errBuf)
     if nil == tmp.pcapPtr {
-        dev = nil
+        handle = nil
         err = errors.New(C.GoString(errBuf))
     } else {
 		handle = tmp

@@ -38,13 +38,16 @@ func rawCaptureService() {
 
 	handle, err := sniffer.NewSniffer(globalProperties.netDev)
 	if err != nil {
-		panic(fmt.Sprintf("Open sniffer on: %s error", globalProperties.netDev))
+		panic(err)
 	}
-	datalink, datalinkName := handle.Datalink()
+	datalink, err := handle.Datalink()
+	if err != nil {
+		panic(err)
+	}
 
     rawPktCaptureStartTime = time.Now()
     for {
-        rawPkt, err := handle.NextEx()
+        rawPkt, err := handle.NextPacket()
         if err != nil {
 			panic(err)
         }
@@ -64,15 +67,15 @@ func rawCaptureService() {
                 continue
             }
 
-            var pktCache proto.PacketCache
-            pktCache.Time = rawPkt.Time
-            pktCache.Datalink = datalinkName
+            var protoCache proto.ProtoCache
+            protoCache.Time = rawPkt.Time
+            protoCache.Datalink = datalink
             if datalink == raw.LINKTYPE_ETHERNET {
-                pktCache.SrcMac = rawPkt.Data[0:6]
-                pktCache.DstMac = rawPkt.Data[6:12]
+                protoCache.SrcMac = rawPkt.Data[0:6]
+                protoCache.DstMac = rawPkt.Data[6:12]
             }
-			pktCache.Data = rawPkt.Data[ipPktOffset:]
-            fmt.Printf("packet cache:%#v\n", pktCache)
+			protoCache.Data = rawPkt.Data[ipPktOffset:]
+            fmt.Printf("packet cache:%#v\n", protoCache)
         }
     }
 }

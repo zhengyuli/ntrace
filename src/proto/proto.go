@@ -7,7 +7,7 @@ import (
 
 type ProtoCache struct {
 	Time time.Time
-	Datalink string
+	Datalink int
 	SrcMac []byte
 	DstMac []byte
 	Data []byte
