@@ -15,10 +15,11 @@ func Encode(data interface{}) (encData []byte, err error) {
     } else {
 		encData = buf.Bytes()
 	}
+
     return
 }
 
-func Decode(encData []byte, data interface{}) error {
+func Decode(encData []byte, data interface{}) (error) {
     dec := gob.NewDecoder(bytes.NewBuffer(encData))
     return dec.Decode(data)
 }

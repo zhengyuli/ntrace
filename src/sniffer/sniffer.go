@@ -36,7 +36,7 @@ func (handle *Sniffer) Datalink() (datalink int, err error) {
 	}
 }
 
-func (handle *Sniffer) SetFilter(filter string) error {
+func (handle *Sniffer) SetFilter(filter string) (error) {
 	switch handle.dev.(type) {
 	case *pcap.Pcap:
 		return handle.dev.(*pcap.Pcap).SetFilter(filter)
@@ -90,7 +90,7 @@ func (handle *Sniffer) Stats() (stats *Stats, err error) {
 	}
 }
 
-func (handle *Sniffer) Close() (error){
+func (handle *Sniffer) Close() (error) {
 	switch handle.dev.(type) {
 	case *pcap.Pcap:
 		handle.dev.(*pcap.Pcap).Close()

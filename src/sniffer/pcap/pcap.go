@@ -48,7 +48,7 @@ func (p *Pcap) Datalink() (int) {
     return int(C.pcap_datalink(p.pcapPtr))
 }
 
-func (p *Pcap) SetFilter(filter string) error {
+func (p *Pcap) SetFilter(filter string) (error) {
     var cfilter *C.char
     cfilter = C.CString(filter)
     defer C.free(unsafe.Pointer(cfilter))
@@ -104,7 +104,7 @@ func (p *Pcap) Close() {
     C.pcap_close(p.pcapPtr)
 }
 
-func (p *Pcap) getError() error {
+func (p *Pcap) getError() (error) {
     return errors.New(C.GoString(C.pcap_geterr(p.pcapPtr)))
 }
 
