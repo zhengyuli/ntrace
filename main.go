@@ -1,232 +1,108 @@
 package main
 
 import (
-	"fmt"
-	"goconf/conf"
-	"proto"
-	"proto/raw"
-	"sniffer"
-	"time"
+	"bitbucket.org/zhengyuli/ntrace/decode"
+	"bitbucket.org/zhengyuli/ntrace/layers"
+	"bitbucket.org/zhengyuli/ntrace/sniffer"
+	"bitbucket.org/zhengyuli/ntrace/sniffer/driver"
+	log "github.com/Sirupsen/logrus"
+	"os"
+	"path"
+	// "time"
 )
 
-type properties struct {
-	// Management service port
-	managementServicePort uint16
+var netDev = "en0"
 
-	// Network device to sniff
-	netDev string
+// SetupDefaultLogger config default logger settings with specified
+// log file name, default log formatter and default log level.
+func setupDefaultLogger(logDir string, logFile string, logLevel log.Level) (*os.File, error) {
+	err := os.MkdirAll(logDir, 0755)
 
-	// File output settings
-	outputFile string
-
-	// Splunk output settings
-	// Splunk index for analysis record
-	splunkIndex string
-	// Splunk source for analysis record
-	splunkSource string
-	// Splunk sourcetype for analysis record
-	splunkSourcetype string
-	// Splunk auth token for http event collector
-	splunkAuthToken string
-	// Splunk url for http event collector
-	splunkUrl string
-
-	// Log settings
-	// Log dir
-	logDir string
-	// Log file
-	logFile string
-	// Log level
-	logLevel int
-}
-
-var globalProperties properties
-
-func initProperties(configFile string) (err error) {
-	c, err := conf.ReadConfigFile(configFile)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	// Get management_service port
-	port, err := c.GetInt("management_service", "port")
+	if path.Ext(logFile) != ".log" {
+		logFile = logFile + ".log"
+	}
+	logFilePath := path.Join(logDir, logFile)
+	out, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
-		return
+		return nil, err
 	}
-	globalProperties.managementServicePort = uint16(port)
+	log.SetOutput(out)
 
-	// Get network device
-	globalProperties.netDev, err = c.GetString("input", "netdev")
-	if err != nil {
-		return
-	}
+	log.SetFormatter(
+		&log.TextFormatter{
+			FullTimestamp:  true,
+			DisableColors:  true,
+			DisableSorting: true})
+	log.SetLevel(logLevel)
 
-	// Get file_output settings
-	if c.HasSection("file_output") {
-		// Get file_output file
-		globalProperties.outputFile, err = c.GetString("file_output", "file")
-		if err != nil {
-			return
-		}
-	}
-
-	// Get splunk_output settings
-	if c.HasSection("splunk_output") {
-		// Get splunk_output index
-		globalProperties.splunkIndex, err = c.GetString("splunk_output", "index")
-		if err != nil {
-			return
-		}
-
-		// Get splunk_utput source
-		globalProperties.splunkSource, err = c.GetString("splunk_output", "source")
-		if err != nil {
-			return
-		}
-
-		// Get splunk_output sourcetype
-		globalProperties.splunkSourcetype, err = c.GetString("splunk_output", "sourcetype")
-		if err != nil {
-			return
-		}
-
-		// Get splunk output auth_token
-		globalProperties.splunkAuthToken, err = c.GetString("splunk_output", "auth_token")
-		if err != nil {
-			return
-		}
-
-		// Get splunk output url
-		globalProperties.splunkUrl, err = c.GetString("splunk_output", "url")
-		if err != nil {
-			return
-		}
-	}
-
-	// Get log dir
-	globalProperties.logDir, err = c.GetString("log", "dir")
-	if err != nil {
-		return
-	}
-
-	// Get log file
-	globalProperties.logFile, err = c.GetString("log", "file")
-	if err != nil {
-		return
-	}
-
-	// Get log level
-	globalProperties.logLevel, err = c.GetInt("log", "level")
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-func displayPropertiesDetail() {
-	fmt.Printf("Startup with properties:{\n")
-	fmt.Printf("    managementServicePort: %v\n", globalProperties.managementServicePort)
-	fmt.Printf("    netDev: %v\n", globalProperties.netDev)
-	fmt.Printf("    outputFile: %v\n", globalProperties.outputFile)
-	fmt.Printf("    splunkIndex: %v\n", globalProperties.splunkIndex)
-	fmt.Printf("    splunkSource: %v\n", globalProperties.splunkSource)
-	fmt.Printf("    splunkSourcetype: %v\n", globalProperties.splunkSourcetype)
-	fmt.Printf("    splunkAuthToken: %v\n", globalProperties.splunkAuthToken)
-	fmt.Printf("    splunkUrl: %v\n", globalProperties.splunkUrl)
-	fmt.Printf("    logDir: %v\n", globalProperties.logDir)
-	fmt.Printf("    logFileName: %v\n", globalProperties.logFile)
-	fmt.Printf("    logLevel: %v\n}\n", globalProperties.logLevel)
-}
-
-var rawPktCaptureSize uint64
-var rawPktCaptureStartTime time.Time
-
-func displayRawCaptureStatisticInfo() {
-	rawPktCaptureEndTime := time.Now()
-	runDuration := rawPktCaptureEndTime.Sub(rawPktCaptureStartTime)
-
-	fmt.Printf("\n"+
-		"==Capture raw packets complete==\n"+
-		"--size: %f KB\n"+
-		"--interval: %f ms\n"+
-		"--rate: %f Mb/s\n\n",
-		float64(rawPktCaptureSize/1024),
-		float64(runDuration/time.Millisecond),
-		float64((rawPktCaptureSize/(128*1024))/uint64(runDuration/time.Second+1)))
+	return out, nil
 }
 
 func rawCaptureService() {
 	defer func() {
 		err := recover()
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			log.Errorf("RawCaptureService run with error: %s", err)
 		}
 
-		fmt.Printf("Raw capture service will exit\n")
-		displayRawCaptureStatisticInfo()
+		log.Info("Raw capture service exit... .. .")
 	}()
 
-	handle, err := sniffer.NewSniffer(globalProperties.netDev)
-	if err != nil {
-		panic(err)
-	}
-	datalink, err := handle.Datalink()
+	handle, err := sniffer.New(netDev)
 	if err != nil {
 		panic(err)
 	}
 
-	rawPktCaptureStartTime = time.Now()
+	pkt := new(driver.Packet)
 	for {
-		rawPkt, err := handle.NextPacket()
+		err := handle.NextPacket(pkt)
 		if err != nil {
 			panic(err)
 		}
 
-		if rawPkt != nil {
-			// Filter out incomplete raw packet
-			if rawPkt.CapLen != rawPkt.Len {
+		if pkt.Data != nil {
+			// Filter out incomplete network packet
+			if pkt.CapLen != pkt.PktLen {
+				log.Warn("Incomplete packet.")
 				continue
 			}
 
-			rawPktCaptureSize += uint64(rawPkt.CapLen)
+			var layerType layers.LayerType
+			layerType = handle.DatalinkType()
+			payload := pkt.Data
+			for {
+				if layerType == layers.NullLayerType {
+					break
+				}
 
-			// Get ip packet
-			ipPktOffset, err := raw.GetIpPktOffset(rawPkt.Data, datalink)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
+				decoder := decode.New(layerType)
+				if decoder == decode.NullDecoder {
+					log.Errorf("No proper decoder for %s.", layerType)
+					break
+				}
+				if err = decoder.Decode(payload); err != nil {
+					log.Errorf("Decode %s error: %s", layerType, err)
+					break
+				}
+				log.Infof("%s", decoder)
 
-			var protoCache proto.ProtoCache
-			protoCache.Time = rawPkt.Time
-			protoCache.Datalink = datalink
-			if datalink == raw.LINKTYPE_ETHERNET {
-				protoCache.SrcMac = rawPkt.Data[0:6]
-				protoCache.DstMac = rawPkt.Data[6:12]
+				layerType = decoder.NextLayerType()
+				payload = decoder.LayerPayload()
 			}
-			protoCache.Data = rawPkt.Data[ipPktOffset:]
-			fmt.Printf("packet cache:%#v\n", protoCache)
 		}
 	}
 }
 
 func main() {
-	displayNtraceStartupInfo()
-
-	err := initProperties("./ntrace.conf")
+	out, err := setupDefaultLogger("/var/log", "ntrace", log.DebugLevel)
 	if err != nil {
-		fmt.Printf("Init properties error: %v.\n", err)
-		return
+		log.Fatalf("Setup default logger with error: %s.", err)
 	}
-
-	err = initZmqHub()
-	if err != nil {
-		fmt.Printf("Init zmq hub error: %v.\n", err)
-		return
-	}
+	defer out.Close()
 
 	rawCaptureService()
-
-	destroyZmqHub()
 }
