@@ -2,6 +2,7 @@ package decode
 
 import (
 	"bitbucket.org/zhengyuli/ntrace/layers"
+	"time"
 )
 
 type Decoder interface {
@@ -12,6 +13,13 @@ type Decoder interface {
 }
 
 var NullDecoder Decoder
+
+type Context struct {
+	Time             time.Time
+	DatalinkDecoder  Decoder
+	NetworkDecoder   Decoder
+	TransportDecoder Decoder
+}
 
 func New(layer layers.LayerType) Decoder {
 	switch layer {

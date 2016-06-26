@@ -15,7 +15,7 @@ const (
 )
 
 type fragmentList struct {
-	List          list.List
+	fragments     list.List
 	Highest       uint16
 	Current       uint16
 	FinalReceived bool
@@ -23,17 +23,16 @@ type fragmentList struct {
 }
 
 func (f *fragmentList) insert(ip *layers.IPv4) (*layers.IPv4, error) {
-	// TODO: should keep a copy of *ip in the list
-	// or not (ie the packet source is reliable) ?
 	fragOffset := ip.FragOffset * 8
 	if fragOffset >= f.Highest {
-		f.List.PushBack(ip)
+		f.fragments.PushBack(ip)
 	} else {
-		for e := f.List.Front(); e != nil; e = e.Next() {
+		for e := f.fragments.Front(); e != nil; e = e.Next() {
 			frag, _ := e.Value.(*layers.IPv4)
 			if ip.FragOffset <= frag.FragOffset {
-				log.Debug("IPv4 defrag: inserting ip fragment %d before existing ip fragment %d.", fragOffset, frag.FragOffset*8)
-				f.List.InsertBefore(ip, e)
+				log.Debug("IPv4 defrag: inserting ip fragment %d before existing ip fragment %d.",
+					fragOffset, frag.FragOffset*8)
+				f.fragments.InsertBefore(ip, e)
 				break
 			}
 		}
@@ -47,7 +46,7 @@ func (f *fragmentList) insert(ip *layers.IPv4) (*layers.IPv4, error) {
 	}
 
 	log.Debug("IPv4 defrag: ip fragments list length: %d, highest: %d, current: %d.",
-		f.List.Len(), f.Highest, f.Current)
+		f.fragments.Len(), f.Highest, f.Current)
 
 	if !ip.MF {
 		f.FinalReceived = true
@@ -63,7 +62,7 @@ func (f *fragmentList) glue(ip *layers.IPv4) (*layers.IPv4, error) {
 	var currentOffset uint16
 
 	log.Debug("IPv4 defrag: Start gluing ip fragments.")
-	for e := f.List.Front(); e != nil; e = e.Next() {
+	for e := f.fragments.Front(); e != nil; e = e.Next() {
 		frag, _ := e.Value.(*layers.IPv4)
 		if frag.FragOffset*8 == currentOffset {
 			log.Debug("IPv4 defrag: gluing ip fragment - %d.", frag.FragOffset*8)
@@ -157,7 +156,7 @@ func (d *IPv4Defragmenter) DefragIPv4(ip *layers.IPv4) (*layers.IPv4, error) {
 
 	// If we hit the maximum frag list len without any defrag success,
 	// we just drop everything and raise an error.
-	if out == nil && fl.List.Len() >= IPv4MaximumFragmentListLen {
+	if out == nil && fl.fragments.Len() >= IPv4MaximumFragmentListLen {
 		delete(d.ipFlows, ipf)
 		err = fmt.Errorf("ip fragments list hits its maximum "+
 			"size=%d without success, flushing the list", IPv4MaximumFragmentListLen)

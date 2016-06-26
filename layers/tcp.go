@@ -5,8 +5,6 @@ import (
 	"fmt"
 )
 
-type TCPPort uint16
-
 type TCPOption struct {
 	OptionType   uint8
 	OptionLength uint8
@@ -15,7 +13,7 @@ type TCPOption struct {
 
 type TCP struct {
 	Base
-	SrcPort, DstPort                           TCPPort
+	SrcPort, DstPort                           uint16
 	Seq                                        uint32
 	Ack                                        uint32
 	DataOffset                                 uint8
@@ -27,8 +25,8 @@ type TCP struct {
 }
 
 func (tcp *TCP) Decode(data []byte) error {
-	tcp.SrcPort = TCPPort(binary.BigEndian.Uint16(data[0:2]))
-	tcp.DstPort = TCPPort(binary.BigEndian.Uint16(data[2:4]))
+	tcp.SrcPort = binary.BigEndian.Uint16(data[0:2])
+	tcp.DstPort = binary.BigEndian.Uint16(data[2:4])
 	tcp.Seq = binary.BigEndian.Uint32(data[4:8])
 	tcp.Ack = binary.BigEndian.Uint32(data[8:12])
 	tcp.DataOffset = uint8(data[12]) >> 4

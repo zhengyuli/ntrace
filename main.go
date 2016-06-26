@@ -2,19 +2,53 @@ package main
 
 import (
 	"bitbucket.org/zhengyuli/ntrace/decode"
-	"bitbucket.org/zhengyuli/ntrace/layers"
-	"bitbucket.org/zhengyuli/ntrace/sniffer"
-	"bitbucket.org/zhengyuli/ntrace/sniffer/driver"
 	log "github.com/Sirupsen/logrus"
 	"os"
+	"os/signal"
 	"path"
-	// "time"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
 )
 
-var netDev = "en0"
+var (
+	netDev   string
+	logDir   string
+	logFile  string
+	logLevel log.Level
 
-// SetupDefaultLogger config default logger settings with specified
-// log file name, default log formatter and default log level.
+	runState            RunState
+	ipDispatchChannel   chan *decode.Context
+	icmpDispatchChannel chan *decode.Context
+	tcpDispatchChannel  chan *decode.Context
+	tcpAssemblyChannels []chan *decode.Context
+)
+
+func init() {
+	netDev = "en0"
+	logDir = "/var/log"
+	logFile = "ntrace"
+	logLevel = log.DebugLevel
+}
+
+type RunState uint32
+
+func (rs *RunState) stop() {
+	atomic.StoreUint32((*uint32)(rs), 1)
+}
+
+func (rs *RunState) stopped() bool {
+	s := atomic.LoadUint32((*uint32)(rs))
+
+	if s > 0 {
+		return true
+	}
+
+	return false
+}
+
 func setupDefaultLogger(logDir string, logFile string, logLevel log.Level) (*os.File, error) {
 	err := os.MkdirAll(logDir, 0755)
 
@@ -42,67 +76,55 @@ func setupDefaultLogger(logDir string, logFile string, logLevel log.Level) (*os.
 	return out, nil
 }
 
-func rawCaptureService() {
-	defer func() {
-		err := recover()
-		if err != nil {
-			log.Errorf("RawCaptureService run with error: %s", err)
-		}
-
-		log.Info("Raw capture service exit... .. .")
-	}()
-
-	handle, err := sniffer.New(netDev)
-	if err != nil {
-		panic(err)
-	}
-
-	pkt := new(driver.Packet)
-	for {
-		err := handle.NextPacket(pkt)
-		if err != nil {
-			panic(err)
-		}
-
-		if pkt.Data != nil {
-			// Filter out incomplete network packet
-			if pkt.CapLen != pkt.PktLen {
-				log.Warn("Incomplete packet.")
-				continue
-			}
-
-			var layerType layers.LayerType
-			layerType = handle.DatalinkType()
-			payload := pkt.Data
-			for {
-				if layerType == layers.NullLayerType {
-					break
-				}
-
-				decoder := decode.New(layerType)
-				if decoder == decode.NullDecoder {
-					log.Errorf("No proper decoder for %s.", layerType)
-					break
-				}
-				if err = decoder.Decode(payload); err != nil {
-					log.Errorf("Decode %s error: %s", layerType, err)
-					break
-				}
-				log.Infof("%s", decoder)
-
-				layerType = decoder.NextLayerType()
-				payload = decoder.LayerPayload()
-			}
-		}
-	}
-}
-
 func main() {
-	out, err := setupDefaultLogger("/var/log", "ntrace", log.DebugLevel)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	out, err := setupDefaultLogger(logDir, logFile, logLevel)
 	if err != nil {
 		log.Fatalf("Setup default logger with error: %s.", err)
 	}
 	defer out.Close()
 
-	rawCaptureService()
+	log.Debugf("Run with %d cpus.", runtime.NumCPU())
+	runtime.GOMAXPROCS(2*runtime.NumCPU() + 1)
+
+	ipDispatchChannel = make(chan *decode.Context, 100000)
+	defer close(ipDispatchChannel)
+
+	icmpDispatchChannel = make(chan *decode.Context, 100000)
+	defer close(icmpDispatchChannel)
+
+	tcpDispatchChannel = make(chan *decode.Context, 100000)
+	defer close(tcpDispatchChannel)
+
+	tcpAssemblyChannels = make([]chan *decode.Context, runtime.NumCPU())
+	for i := 0; i < runtime.NumCPU(); i++ {
+		tcpAssemblyChannels[i] = make(chan *decode.Context, 100000)
+		defer close(tcpAssemblyChannels[i])
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(4 + runtime.NumCPU())
+	go datalinkCaptureService(netDev, &wg, &runState)
+	go ipProcessService(&wg, &runState)
+	go icmpProcessService(&wg, &runState)
+	go tcpProcessService(&wg, &runState)
+	for i := 0; i < runtime.NumCPU(); i++ {
+		go tcpAssemblyService(i, &wg, &runState)
+	}
+
+	for !runState.stopped() {
+		select {
+		case <-sigChan:
+			runState.stop()
+			goto exit
+
+		case <-time.After(time.Second):
+			break
+		}
+	}
+
+exit:
+	wg.Wait()
 }
