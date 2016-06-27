@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/decode"
+	"bitbucket.org/zhengyuli/ntrace/layers"
 	log "github.com/Sirupsen/logrus"
 	"os"
 	"os/signal"
@@ -20,10 +20,10 @@ var (
 	logLevel log.Level
 
 	runState            RunState
-	ipDispatchChannel   chan *decode.Context
-	icmpDispatchChannel chan *decode.Context
-	tcpDispatchChannel  chan *decode.Context
-	tcpAssemblyChannels []chan *decode.Context
+	ipDispatchChannel   chan *layers.DecodeContext
+	icmpDispatchChannel chan *layers.DecodeContext
+	tcpDispatchChannel  chan *layers.DecodeContext
+	tcpAssemblyChannels []chan *layers.DecodeContext
 )
 
 func init() {
@@ -89,18 +89,18 @@ func main() {
 	log.Debugf("Run with %d cpus.", runtime.NumCPU())
 	runtime.GOMAXPROCS(2*runtime.NumCPU() + 1)
 
-	ipDispatchChannel = make(chan *decode.Context, 100000)
+	ipDispatchChannel = make(chan *layers.DecodeContext, 100000)
 	defer close(ipDispatchChannel)
 
-	icmpDispatchChannel = make(chan *decode.Context, 100000)
+	icmpDispatchChannel = make(chan *layers.DecodeContext, 100000)
 	defer close(icmpDispatchChannel)
 
-	tcpDispatchChannel = make(chan *decode.Context, 100000)
+	tcpDispatchChannel = make(chan *layers.DecodeContext, 100000)
 	defer close(tcpDispatchChannel)
 
-	tcpAssemblyChannels = make([]chan *decode.Context, runtime.NumCPU())
+	tcpAssemblyChannels = make([]chan *layers.DecodeContext, runtime.NumCPU())
 	for i := 0; i < runtime.NumCPU(); i++ {
-		tcpAssemblyChannels[i] = make(chan *decode.Context, 100000)
+		tcpAssemblyChannels[i] = make(chan *layers.DecodeContext, 100000)
 		defer close(tcpAssemblyChannels[i])
 	}
 

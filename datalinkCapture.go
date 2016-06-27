@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/decode"
 	"bitbucket.org/zhengyuli/ntrace/layers"
 	"bitbucket.org/zhengyuli/ntrace/sniffer"
 	"bitbucket.org/zhengyuli/ntrace/sniffer/driver"
@@ -47,8 +46,8 @@ func datalinkCaptureService(netDev string, wg *sync.WaitGroup, state *RunState) 
 			}
 
 			layerType := handle.DatalinkType()
-			decoder := decode.New(layerType)
-			if decoder == decode.NullDecoder {
+			decoder := layers.NewDecoder(layerType)
+			if decoder == layers.NullDecoder {
 				panic(fmt.Errorf("No proper decoder for %s.", layerType))
 			}
 			if err = decoder.Decode(pkt.Data); err != nil {
@@ -56,7 +55,7 @@ func datalinkCaptureService(netDev string, wg *sync.WaitGroup, state *RunState) 
 				continue
 			}
 
-			context := new(decode.Context)
+			context := new(layers.DecodeContext)
 			context.Time = pkt.Time
 			context.DatalinkDecoder = decoder
 

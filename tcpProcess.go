@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/decode"
 	"bitbucket.org/zhengyuli/ntrace/fasthash"
 	"bitbucket.org/zhengyuli/ntrace/layers"
 	"bitbucket.org/zhengyuli/ntrace/tcpassembly"
@@ -29,8 +28,8 @@ func tcpProcessService(wg *sync.WaitGroup, state *RunState) {
 		select {
 		case context := <-tcpDispatchChannel:
 			layerType := context.NetworkDecoder.NextLayerType()
-			decoder := decode.New(layerType)
-			if decoder == decode.NullDecoder {
+			decoder := layers.NewDecoder(layerType)
+			if decoder == layers.NullDecoder {
 				log.Errorf("No proper decoder for %s.", layerType)
 				continue
 			}
@@ -72,7 +71,9 @@ func tcpAssemblyService(index int, wg *sync.WaitGroup, state *RunState) {
 		timer.Reset(time.Second)
 		select {
 		case context := <-tcpAssemblyChannels[index]:
-			assembler.Assemble(context)
+			ipDecoder := context.NetworkDecoder.(*layers.IPv4)
+			tcpDecoder := context.TransportDecoder.(*layers.TCP)
+			assembler.Assemble(ipDecoder, tcpDecoder, context.Time)
 
 		case <-timer.C:
 			break

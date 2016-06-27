@@ -2,7 +2,6 @@ package tcpassembly
 
 import (
 	"bitbucket.org/zhengyuli/ntrace/analyzer"
-	"bitbucket.org/zhengyuli/ntrace/decode"
 	"bitbucket.org/zhengyuli/ntrace/layers"
 	"container/list"
 	"fmt"
@@ -117,6 +116,7 @@ func (a *Assembler) handleEstb(stream *Stream, timestamp time.Time) {
 	stream.Client.State = TcpEstablished
 	stream.Server.State = TcpEstablished
 	stream.State = StreamConnected
+	stream.Analyzer.HandleEstb(timestamp)
 }
 
 func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream, timestamp time.Time) {
@@ -127,9 +127,17 @@ func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream,
 		direction = FromServer
 	}
 
-	log.Debugf("Tcp assembly: tcp connection %s get %d bytes data %s - %s.", stream.Addr, len(rcv.RecvData), direction, rcv.RecvData)
+	log.Debugf("Tcp assembly: tcp connection %s get %d bytes data %s.", stream.Addr, len(rcv.RecvData), direction)
 
-	rcv.RecvData = make([]byte, 0, 4096)
+	var sessionDone bool
+	if direction == FromClient {
+		sessionDone = stream.Analyzer.HandleData(&rcv.RecvData, true, timestamp)
+	} else {
+		sessionDone = stream.Analyzer.HandleData(&rcv.RecvData, false, timestamp)
+	}
+	if sessionDone {
+		log.Debug("Tcp assembly: handle data session done.")
+	}
 }
 
 func (a *Assembler) handleReset(stream *Stream, snd *HalfStream, rcv *HalfStream, timestamp time.Time) {
@@ -149,10 +157,16 @@ func (a *Assembler) handleReset(stream *Stream, snd *HalfStream, rcv *HalfStream
 			stream.State = StreamResetByServerBeforeConn
 		}
 	} else {
+		var sessionDone bool
 		if direction == FromClient {
 			stream.State = StreamResetByClientAferConn
+			sessionDone = stream.Analyzer.HandleReset(true, timestamp)
 		} else {
 			stream.State = StreamResetByServerAferConn
+			sessionDone = stream.Analyzer.HandleReset(false, timestamp)
+		}
+		if sessionDone {
+			log.Debug("Tcp assembly: handle reset session done.")
 		}
 	}
 
@@ -174,6 +188,18 @@ func (a *Assembler) handleFin(stream *Stream, snd *HalfStream, rcv *HalfStream, 
 	}
 	stream.State = StreamClosing
 	a.addClosingStream(stream, timestamp)
+
+	if !lazyMode {
+		var sessionDone bool
+		if direction == FromClient {
+			sessionDone = stream.Analyzer.HandleFin(true, timestamp)
+		} else {
+			sessionDone = stream.Analyzer.HandleFin(false, timestamp)
+		}
+		if sessionDone {
+			log.Debug("Tcp assembly: handle fin session done.")
+		}
+	}
 }
 
 func (a *Assembler) handleClose(stream *Stream, timestamp time.Time) {
@@ -246,6 +272,7 @@ func (a *Assembler) addStream(ipDecoder *layers.IPv4, tcpDecoder *layers.TCP, ti
 			ExpRcvSeq: tcpDecoder.Seq + 1,
 			RecvData:  make([]byte, 0, 4096),
 		},
+		Analyzer: new(analyzer.DumyAnalyzer),
 	}
 	a.Count++
 	a.Streams[addr] = stream
@@ -332,7 +359,7 @@ func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, t
 		}
 
 		if seqDiff(endSeq, rcv.ExpRcvSeq) <= 0 {
-			log.Debug("Tcp assembly: tcp connection %s get retransmited packet %s.", stream.Addr)
+			log.Debugf("Tcp assembly: tcp connection %s get retransmited packet.", stream.Addr)
 			return
 		}
 
@@ -341,13 +368,15 @@ func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, t
 			if seqDiff(e.Value.(*Page).Seq, rcv.ExpRcvSeq) > 0 {
 				break
 			}
-
-			a.addFromPage(stream, snd, rcv, page, timestamp)
+			a.addFromPage(stream, snd, rcv, e.Value.(*Page), timestamp)
 			tmp := e.Next()
 			rcv.Pages.Remove(e)
 			e = tmp
 		}
-		a.handleData(stream, snd, rcv, timestamp)
+
+		if len(rcv.RecvData) > 0 {
+			a.handleData(stream, snd, rcv, timestamp)
+		}
 	} else {
 		var e *list.Element
 		for e = rcv.Pages.Front(); e != nil; e = e.Next() {
@@ -366,15 +395,12 @@ func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, t
 	}
 }
 
-func (a *Assembler) Assemble(context *decode.Context) {
-	ipDecoder := context.NetworkDecoder.(*layers.IPv4)
-	tcpDecoder := context.TransportDecoder.(*layers.TCP)
-
+func (a *Assembler) Assemble(ipDecoder *layers.IPv4, tcpDecoder *layers.TCP, timestamp time.Time) {
 	stream, direction := a.findStream(ipDecoder, tcpDecoder)
 	if stream == nil {
 		// The first packet of tcp three handshakes
 		if tcpDecoder.SYN && !tcpDecoder.ACK && !tcpDecoder.RST {
-			a.addStream(ipDecoder, tcpDecoder, context.Time)
+			a.addStream(ipDecoder, tcpDecoder, timestamp)
 		}
 		return
 	}
@@ -405,7 +431,7 @@ func (a *Assembler) Assemble(context *decode.Context) {
 		}
 
 		// Unlikely, invalid packet with syn
-		a.handleCloseAbnormally(stream, context.Time)
+		a.handleCloseAbnormally(stream, timestamp)
 		return
 	}
 
@@ -421,7 +447,7 @@ func (a *Assembler) Assemble(context *decode.Context) {
 
 	// Tcp rset packet
 	if tcpDecoder.RST {
-		a.handleReset(stream, snd, rcv, context.Time)
+		a.handleReset(stream, snd, rcv, timestamp)
 		return
 	}
 
@@ -432,16 +458,16 @@ func (a *Assembler) Assemble(context *decode.Context) {
 			if tcpDecoder.Seq != stream.Server.ExpRcvSeq {
 				log.Debug("Tcp assembly: unexpected sequence=%d of the third packet of "+
 					"tcp three handshakes, expected sequence=%d.", tcpDecoder.Seq, stream.Server.ExpRcvSeq)
-				a.handleCloseAbnormally(stream, context.Time)
+				a.handleCloseAbnormally(stream, timestamp)
 				return
 			}
 
-			a.handleEstb(stream, context.Time)
+			a.handleEstb(stream, timestamp)
 		}
 
 		if seqDiff(snd.Ack, tcpDecoder.Ack) < 0 {
 			snd.Ack = tcpDecoder.Ack
-		} else {
+		} else if len(tcpDecoder.Payload) == 0 {
 			log.Debug("tmp - Duplicated ack sequence.")
 		}
 
@@ -450,7 +476,7 @@ func (a *Assembler) Assemble(context *decode.Context) {
 		}
 
 		if snd.State == TcpFinConfirmed && rcv.State == TcpFinConfirmed {
-			a.handleClose(stream, context.Time)
+			a.handleClose(stream, timestamp)
 			return
 		}
 	}
@@ -464,7 +490,7 @@ func (a *Assembler) Assemble(context *decode.Context) {
 			log.Debug("tmp - tiny packets.")
 		}
 
-		a.tcpQueue(stream, snd, rcv, tcpDecoder, context.Time)
+		a.tcpQueue(stream, snd, rcv, tcpDecoder, timestamp)
 	}
 }
 

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/decode"
 	"bitbucket.org/zhengyuli/ntrace/layers"
 	log "github.com/Sirupsen/logrus"
 	"sync"
@@ -26,8 +25,8 @@ func ipProcessService(wg *sync.WaitGroup, state *RunState) {
 		select {
 		case context := <-ipDispatchChannel:
 			layerType := context.DatalinkDecoder.NextLayerType()
-			decoder := decode.New(layerType)
-			if decoder == decode.NullDecoder {
+			decoder := layers.NewDecoder(layerType)
+			if decoder == layers.NullDecoder {
 				log.Errorf("No proper decoder for %s.", layerType)
 				continue
 			}

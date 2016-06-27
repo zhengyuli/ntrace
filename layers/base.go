@@ -1,29 +1,5 @@
 package layers
 
-import (
-	"fmt"
-)
-
-type LayerType interface{}
-
-var NullLayerType LayerType
-
-type DatalinkType int
-
-const (
-	DatalinkTypeEthernet DatalinkType = 0x0001
-)
-
-func (dt DatalinkType) String() string {
-	switch dt {
-	case DatalinkTypeEthernet:
-		return "Ethernet"
-
-	default:
-		return fmt.Sprintf("Datalink type 0x%04X", uint16(dt))
-	}
-}
-
 // Base is a convenience struct which implements the LayerData and
 // LayerPayload functions of the Layer interface.
 type Base struct {

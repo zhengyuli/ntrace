@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/decode"
+	"bitbucket.org/zhengyuli/ntrace/layers"
 	log "github.com/Sirupsen/logrus"
 	"sync"
 	"time"
@@ -25,8 +25,8 @@ func icmpProcessService(wg *sync.WaitGroup, state *RunState) {
 		select {
 		case context := <-icmpDispatchChannel:
 			layerType := context.NetworkDecoder.NextLayerType()
-			decoder := decode.New(layerType)
-			if decoder == decode.NullDecoder {
+			decoder := layers.NewDecoder(layerType)
+			if decoder == layers.NullDecoder {
 				log.Errorf("No proper decoder for %s.", layerType)
 				continue
 			}
