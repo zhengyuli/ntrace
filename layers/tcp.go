@@ -87,7 +87,11 @@ func (tcp *TCP) Decode(data []byte) error {
 }
 
 func (tcp *TCP) NextLayerType() LayerType {
-	return NullLayerType
+	return NullLayer
+}
+
+func (tcp *TCP) NextLayerDecoder() Decoder {
+	return NullDecoder
 }
 
 func (tcp TCP) String() string {

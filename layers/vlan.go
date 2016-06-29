@@ -33,6 +33,16 @@ func (v *VLAN) NextLayerType() LayerType {
 	return v.EthernetType
 }
 
+func (v *VLAN) NextLayerDecoder() Decoder {
+	switch v.EthernetType {
+	case EthernetTypeIPv4:
+		return new(IPv4)
+
+	default:
+		return NullDecoder
+	}
+}
+
 func (v VLAN) String() string {
 	desc := "VLAN: "
 	desc += fmt.Sprintf("priority=%d, ", v.Priority)

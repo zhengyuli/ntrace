@@ -13,7 +13,7 @@ const (
 	EthernetTypeVLAN EthernetType = 0x8100
 )
 
-func (et EthernetType) String() string {
+func (et EthernetType) Name() string {
 	switch et {
 	case EthernetTypeIPv4:
 		return "IPv4"
@@ -25,9 +25,6 @@ func (et EthernetType) String() string {
 		return fmt.Sprintf("Ethernet type 0x%04X", uint16(et))
 	}
 }
-
-// EthernetBroadcast is the broadcast MAC address used by Ethernet.
-var EthernetBroadcast = net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 
 // Ethernet is the layer for Ethernet frame headers.
 type Ethernet struct {
@@ -52,6 +49,19 @@ func (eth *Ethernet) Decode(data []byte) error {
 
 func (eth *Ethernet) NextLayerType() LayerType {
 	return eth.EthernetType
+}
+
+func (eth *Ethernet) NextLayerDecoder() Decoder {
+	switch eth.EthernetType {
+	case EthernetTypeIPv4:
+		return new(IPv4)
+
+	case EthernetTypeVLAN:
+		return new(VLAN)
+
+	default:
+		return NullDecoder
+	}
 }
 
 func (eth Ethernet) String() string {

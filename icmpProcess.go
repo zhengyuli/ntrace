@@ -25,13 +25,13 @@ func icmpProcessService(wg *sync.WaitGroup, state *RunState) {
 		select {
 		case context := <-icmpDispatchChannel:
 			layerType := context.NetworkDecoder.NextLayerType()
-			decoder := layers.NewDecoder(layerType)
+			decoder := context.NetworkDecoder.NextLayerDecoder()
 			if decoder == layers.NullDecoder {
-				log.Errorf("No proper decoder for %s.", layerType)
+				log.Errorf("No proper decoder for %s.", layerType.Name())
 				continue
 			}
 			if err := decoder.Decode(context.NetworkDecoder.LayerPayload()); err != nil {
-				log.Errorf("Decode %s error: %s.", layerType, err)
+				log.Errorf("Decode %s error: %s.", layerType.Name(), err)
 				continue
 			}
 			log.Infof("%s", decoder)

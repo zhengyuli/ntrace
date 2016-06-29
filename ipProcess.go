@@ -25,13 +25,13 @@ func ipProcessService(wg *sync.WaitGroup, state *RunState) {
 		select {
 		case context := <-ipDispatchChannel:
 			layerType := context.DatalinkDecoder.NextLayerType()
-			decoder := layers.NewDecoder(layerType)
+			decoder := context.DatalinkDecoder.NextLayerDecoder()
 			if decoder == layers.NullDecoder {
-				log.Errorf("No proper decoder for %s.", layerType)
+				log.Errorf("No proper decoder for %s.", layerType.Name())
 				continue
 			}
 			if err := decoder.Decode(context.DatalinkDecoder.LayerPayload()); err != nil {
-				log.Errorf("Decode %s error: %s.", layerType, err)
+				log.Errorf("Decode %s error: %s.", layerType.Name(), err)
 				continue
 			}
 

@@ -230,21 +230,24 @@ func (a *Assembler) handleClosingTimeout(stream *Stream, timestamp time.Time) {
 	a.removeStream(stream)
 }
 
-func (a *Assembler) findStream(ipDecoder *layers.IPv4, tcpDecoder *layers.TCP) (*Stream, Direction) {
+func (a *Assembler) findStream(ipDecoder layers.Decoder, tcp *layers.TCP) (*Stream, Direction) {
+	// TODO: IPv6 support
+	ip := ipDecoder.(*layers.IPv4)
+
 	stream := a.Streams[Tuple4{
-		SrcIP:   ipDecoder.SrcIP.String(),
-		SrcPort: tcpDecoder.SrcPort,
-		DstIP:   ipDecoder.DstIP.String(),
-		DstPort: tcpDecoder.DstPort}]
+		SrcIP:   ip.SrcIP.String(),
+		SrcPort: tcp.SrcPort,
+		DstIP:   ip.DstIP.String(),
+		DstPort: tcp.DstPort}]
 	if stream != nil {
 		return stream, FromClient
 	}
 
 	stream = a.Streams[Tuple4{
-		SrcIP:   ipDecoder.DstIP.String(),
-		SrcPort: tcpDecoder.DstPort,
-		DstIP:   ipDecoder.SrcIP.String(),
-		DstPort: tcpDecoder.SrcPort}]
+		SrcIP:   ip.DstIP.String(),
+		SrcPort: tcp.DstPort,
+		DstIP:   ip.SrcIP.String(),
+		DstPort: tcp.SrcPort}]
 	if stream != nil {
 		return stream, FromServer
 	}
@@ -252,24 +255,27 @@ func (a *Assembler) findStream(ipDecoder *layers.IPv4, tcpDecoder *layers.TCP) (
 	return nil, FromClient
 }
 
-func (a *Assembler) addStream(ipDecoder *layers.IPv4, tcpDecoder *layers.TCP, timestamp time.Time) {
+func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timestamp time.Time) {
+	// TODO: IPv6 support
+	ip := ipDecoder.(*layers.IPv4)
+
 	addr := Tuple4{
-		SrcIP:   ipDecoder.SrcIP.String(),
-		SrcPort: tcpDecoder.SrcPort,
-		DstIP:   ipDecoder.DstIP.String(),
-		DstPort: tcpDecoder.DstPort}
+		SrcIP:   ip.SrcIP.String(),
+		SrcPort: tcp.SrcPort,
+		DstIP:   ip.DstIP.String(),
+		DstPort: tcp.DstPort}
 	stream := &Stream{
 		Addr:  addr,
 		State: StreamConnecting,
 		Client: HalfStream{
 			State:    TcpSynSent,
-			Seq:      tcpDecoder.Seq,
-			Ack:      tcpDecoder.Ack,
+			Seq:      tcp.Seq,
+			Ack:      tcp.Ack,
 			RecvData: make([]byte, 0, 4096),
 		},
 		Server: HalfStream{
 			State:     TcpClosed,
-			ExpRcvSeq: tcpDecoder.Seq + 1,
+			ExpRcvSeq: tcp.Seq + 1,
 			RecvData:  make([]byte, 0, 4096),
 		},
 		Analyzer: new(analyzer.DumyAnalyzer),
@@ -342,19 +348,19 @@ func (a *Assembler) addFromPage(stream *Stream, snd *HalfStream, rcv *HalfStream
 	}
 }
 
-func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, tcpDecoder *layers.TCP, timestamp time.Time) {
+func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, tcp *layers.TCP, timestamp time.Time) {
 	page := &Page{
-		Seq:     tcpDecoder.Seq,
-		Ack:     tcpDecoder.Ack,
-		URG:     tcpDecoder.URG,
-		FIN:     tcpDecoder.FIN,
-		Urgent:  tcpDecoder.Urgent,
-		Payload: tcpDecoder.Payload,
+		Seq:     tcp.Seq,
+		Ack:     tcp.Ack,
+		URG:     tcp.URG,
+		FIN:     tcp.FIN,
+		Urgent:  tcp.Urgent,
+		Payload: tcp.Payload,
 	}
 
-	if seqDiff(tcpDecoder.Seq, rcv.ExpRcvSeq) <= 0 {
-		endSeq := tcpDecoder.Seq + uint32(len(tcpDecoder.Payload))
-		if tcpDecoder.FIN {
+	if seqDiff(tcp.Seq, rcv.ExpRcvSeq) <= 0 {
+		endSeq := tcp.Seq + uint32(len(tcp.Payload))
+		if tcp.FIN {
 			endSeq++
 		}
 
@@ -380,7 +386,7 @@ func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, t
 	} else {
 		var e *list.Element
 		for e = rcv.Pages.Front(); e != nil; e = e.Next() {
-			if seqDiff(e.Value.(*Page).Seq, tcpDecoder.Seq) > 0 {
+			if seqDiff(e.Value.(*Page).Seq, tcp.Seq) > 0 {
 				rcv.Pages.InsertBefore(page, e)
 				break
 			}
@@ -389,30 +395,31 @@ func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, t
 			rcv.Pages.PushBack(page)
 		}
 
-		if tcpDecoder.FIN {
+		if tcp.FIN {
 			a.handleFin(stream, snd, rcv, timestamp, true)
 		}
 	}
 }
 
-func (a *Assembler) Assemble(ipDecoder *layers.IPv4, tcpDecoder *layers.TCP, timestamp time.Time) {
-	stream, direction := a.findStream(ipDecoder, tcpDecoder)
+func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder, timestamp time.Time) {
+	tcp := tcpDecoder.(*layers.TCP)
+	stream, direction := a.findStream(ipDecoder, tcp)
 	if stream == nil {
 		// The first packet of tcp three handshakes
-		if tcpDecoder.SYN && !tcpDecoder.ACK && !tcpDecoder.RST {
-			a.addStream(ipDecoder, tcpDecoder, timestamp)
+		if tcp.SYN && !tcp.ACK && !tcp.RST {
+			a.addStream(ipDecoder, tcp, timestamp)
 		}
 		return
 	}
 
-	if tcpDecoder.SYN {
+	if tcp.SYN {
 		// The second packet of tcp three handshakes
-		if direction == FromServer && tcpDecoder.ACK &&
+		if direction == FromServer && tcp.ACK &&
 			stream.Client.State == TcpSynSent && stream.Server.State == TcpClosed {
 			stream.Server.State = TcpSynReceived
-			stream.Server.Seq = tcpDecoder.Seq
-			stream.Server.Ack = tcpDecoder.Ack
-			stream.Client.ExpRcvSeq = tcpDecoder.Seq + 1
+			stream.Server.Seq = tcp.Seq
+			stream.Server.Ack = tcp.Ack
+			stream.Client.ExpRcvSeq = tcp.Seq + 1
 			return
 		}
 
@@ -443,21 +450,21 @@ func (a *Assembler) Assemble(ipDecoder *layers.IPv4, tcpDecoder *layers.TCP, tim
 		snd = &stream.Server
 		rcv = &stream.Client
 	}
-	snd.Seq = tcpDecoder.Seq
+	snd.Seq = tcp.Seq
 
 	// Tcp rset packet
-	if tcpDecoder.RST {
+	if tcp.RST {
 		a.handleReset(stream, snd, rcv, timestamp)
 		return
 	}
 
-	if tcpDecoder.ACK {
+	if tcp.ACK {
 		// The third packet of tcp three handshakes
 		if direction == FromClient &&
 			stream.Client.State == TcpSynSent && stream.Server.State == TcpSynReceived {
-			if tcpDecoder.Seq != stream.Server.ExpRcvSeq {
+			if tcp.Seq != stream.Server.ExpRcvSeq {
 				log.Debug("Tcp assembly: unexpected sequence=%d of the third packet of "+
-					"tcp three handshakes, expected sequence=%d.", tcpDecoder.Seq, stream.Server.ExpRcvSeq)
+					"tcp three handshakes, expected sequence=%d.", tcp.Seq, stream.Server.ExpRcvSeq)
 				a.handleCloseAbnormally(stream, timestamp)
 				return
 			}
@@ -465,9 +472,9 @@ func (a *Assembler) Assemble(ipDecoder *layers.IPv4, tcpDecoder *layers.TCP, tim
 			a.handleEstb(stream, timestamp)
 		}
 
-		if seqDiff(snd.Ack, tcpDecoder.Ack) < 0 {
-			snd.Ack = tcpDecoder.Ack
-		} else if len(tcpDecoder.Payload) == 0 {
+		if seqDiff(snd.Ack, tcp.Ack) < 0 {
+			snd.Ack = tcp.Ack
+		} else if len(tcp.Payload) == 0 {
 			log.Debug("tmp - Duplicated ack sequence.")
 		}
 
@@ -481,16 +488,16 @@ func (a *Assembler) Assemble(ipDecoder *layers.IPv4, tcpDecoder *layers.TCP, tim
 		}
 	}
 
-	if len(tcpDecoder.Payload) > 0 || tcpDecoder.FIN {
+	if len(tcp.Payload) > 0 || tcp.FIN {
 		if stream.State != StreamDataExchanging {
 			stream.State = StreamDataExchanging
 		}
 
-		if len(tcpDecoder.Payload) > 0 && len(tcpDecoder.Payload) <= 32 {
+		if len(tcp.Payload) > 0 && len(tcp.Payload) <= 32 {
 			log.Debug("tmp - tiny packets.")
 		}
 
-		a.tcpQueue(stream, snd, rcv, tcpDecoder, timestamp)
+		a.tcpQueue(stream, snd, rcv, tcp, timestamp)
 	}
 }
 

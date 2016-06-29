@@ -13,7 +13,7 @@ const (
 	IPv4ProtocolTCP  IPv4Protocol = 0x06
 )
 
-func (p IPv4Protocol) String() string {
+func (p IPv4Protocol) Name() string {
 	switch p {
 	case IPv4ProtocolICMP:
 		return "ICMPv4"
@@ -47,6 +47,14 @@ type IPv4 struct {
 	SrcIP      net.IP
 	DstIP      net.IP
 	Options    []IPv4Option
+}
+
+func (ip *IPv4) GetSrcIP() string {
+	return ip.SrcIP.String()
+}
+
+func (ip *IPv4) GetDstIP() string {
+	return ip.DstIP.String()
 }
 
 func (ip *IPv4) Decode(data []byte) error {
@@ -113,6 +121,19 @@ func (ip *IPv4) Decode(data []byte) error {
 
 func (ip *IPv4) NextLayerType() LayerType {
 	return ip.Protocol
+}
+
+func (ip *IPv4) NextLayerDecoder() Decoder {
+	switch ip.Protocol {
+	case IPv4ProtocolICMP:
+		return new(ICMPv4)
+
+	case IPv4ProtocolTCP:
+		return new(TCP)
+
+	default:
+		return NullDecoder
+	}
 }
 
 func (ip IPv4) String() string {

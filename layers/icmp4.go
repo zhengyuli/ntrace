@@ -27,7 +27,11 @@ func (icmp *ICMPv4) Decode(data []byte) error {
 }
 
 func (icmp *ICMPv4) NextLayerType() LayerType {
-	return NullLayerType
+	return NullLayer
+}
+
+func (icmp *ICMPv4) NextLayerDecoder() Decoder {
+	return NullDecoder
 }
 
 func (icmp ICMPv4) String() string {

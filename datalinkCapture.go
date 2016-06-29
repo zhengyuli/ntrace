@@ -26,7 +26,7 @@ func datalinkCaptureService(netDev string, wg *sync.WaitGroup, state *RunState) 
 		panic(err)
 	}
 
-	err = handle.SetFilter("ip host 210.28.129.4")
+	err = handle.SetFilter("tcp or icmp")
 	if err != nil {
 		panic(err)
 	}
@@ -46,12 +46,12 @@ func datalinkCaptureService(netDev string, wg *sync.WaitGroup, state *RunState) 
 			}
 
 			layerType := handle.DatalinkType()
-			decoder := layers.NewDecoder(layerType)
+			decoder := layerType.NewDecoder()
 			if decoder == layers.NullDecoder {
-				panic(fmt.Errorf("No proper decoder for %s.", layerType))
+				panic(fmt.Errorf("No proper decoder for %s.", layerType.Name()))
 			}
 			if err = decoder.Decode(pkt.Data); err != nil {
-				log.Errorf("Decode %s error: %s.", layerType, err)
+				log.Errorf("Decode %s error: %s.", layerType.Name(), err)
 				continue
 			}
 
@@ -60,11 +60,12 @@ func datalinkCaptureService(netDev string, wg *sync.WaitGroup, state *RunState) 
 			context.DatalinkDecoder = decoder
 
 			switch decoder.NextLayerType() {
-			case layers.EthernetTypeIPv4:
+			case layers.ProtocolFamilyIPv4,
+				layers.EthernetTypeIPv4:
 				ipDispatchChannel <- context
 
 			default:
-				log.Errorf("Unsupported next layer type: %s.", decoder.NextLayerType())
+				log.Errorf("Unsupported next layer type: %s.", decoder.NextLayerType().Name())
 			}
 		}
 	}

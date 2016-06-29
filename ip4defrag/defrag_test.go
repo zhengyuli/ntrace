@@ -1310,14 +1310,14 @@ func TestDefragPingTooMuch(t *testing.T) {
 	genTestDefrag(t, defrag, testPing1Frag2, false, "Ping1Frag2")
 	genTestDefrag(t, defrag, testPing1Frag1, false, "Ping1Frag1")
 
-	decoder := layers.NewDecoder(layers.DatalinkTypeEthernet)
+	decoder := layers.Decoder(new(layers.Ethernet))
 	err := decoder.Decode(testPing1Frag1)
 	if err != nil {
 		t.Errorf("IPv4 defrag: decode Ethernet error: %s.", err)
 	}
 
 	payload := decoder.LayerPayload()
-	decoder = layers.NewDecoder(layers.EthernetTypeIPv4)
+	decoder = new(layers.IPv4)
 	err = decoder.Decode(payload)
 	if err != nil {
 		t.Errorf("IPv4 defrag: decode IPv4 error: %s.", err)
@@ -1334,14 +1334,14 @@ func TestDefragPingTooMuch(t *testing.T) {
 }
 
 func genTestDefrag(t *testing.T, defrag *IPv4Defragmenter, buf []byte, expect bool, label string) *layers.IPv4 {
-	decoder := layers.NewDecoder(layers.DatalinkTypeEthernet)
+	decoder := layers.Decoder(new(layers.Ethernet))
 	err := decoder.Decode(buf)
 	if err != nil {
 		t.Errorf("IPv4 defrag: decode Ethernet error: %s.", err)
 	}
 
 	payload := decoder.LayerPayload()
-	decoder = layers.NewDecoder(layers.EthernetTypeIPv4)
+	decoder = new(layers.IPv4)
 	err = decoder.Decode(payload)
 	if err != nil {
 		t.Errorf("IPv4 defrag: decode IPv4 error: %s.", err)
