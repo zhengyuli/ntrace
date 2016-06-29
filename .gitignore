@@ -1,7 +1,1 @@
-*.pyc
-*cscope*
-*.o
-*.obj
-TAGS
-build/
-*.pyc
+ntrace

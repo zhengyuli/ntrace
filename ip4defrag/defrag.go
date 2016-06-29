@@ -15,11 +15,11 @@ const (
 )
 
 type fragmentList struct {
-	fragments     list.List
-	Highest       uint16
-	Current       uint16
-	FinalReceived bool
-	LastSeen      time.Time
+	fragments    list.List
+	Highest      uint16
+	Current      uint16
+	LastReceived bool
+	LastSeen     time.Time
 }
 
 func (f *fragmentList) insert(ip *layers.IPv4) (*layers.IPv4, error) {
@@ -49,9 +49,9 @@ func (f *fragmentList) insert(ip *layers.IPv4) (*layers.IPv4, error) {
 		f.fragments.Len(), f.Highest, f.Current)
 
 	if !ip.MF {
-		f.FinalReceived = true
+		f.LastReceived = true
 	}
-	if f.FinalReceived && f.Highest == f.Current {
+	if f.LastReceived && f.Highest == f.Current {
 		return f.glue(ip)
 	}
 	return nil, nil
