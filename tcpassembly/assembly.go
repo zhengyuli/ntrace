@@ -2,6 +2,7 @@ package tcpassembly
 
 import (
 	"bitbucket.org/zhengyuli/ntrace/analyzer"
+	"bitbucket.org/zhengyuli/ntrace/analyzer/dumy"
 	"bitbucket.org/zhengyuli/ntrace/layers"
 	"container/list"
 	"fmt"
@@ -278,13 +279,13 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 			ExpRcvSeq: tcp.Seq + 1,
 			RecvData:  make([]byte, 0, 4096),
 		},
-		Analyzer: new(analyzer.DumyAnalyzer),
+		Analyzer: analyzer.GetAnalyzer(dumy.Proto),
 	}
 	a.Count++
 	a.Streams[addr] = stream
 	stream.StreamsListElement = a.StreamsList.PushBack(stream)
 
-	for a.StreamsList.Len() > 65535 {
+	for a.StreamsList.Len() > 65536 {
 		stream := a.StreamsList.Front().Value.(*Stream)
 		a.handleCloseAbnormally(stream, timestamp)
 	}

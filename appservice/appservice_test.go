@@ -5,31 +5,21 @@ import (
 	"testing"
 )
 
-func TestAppServiceManager(t *testing.T) {
-	as1 := AppService{
-		Proto: "HTTP",
-		IP:    net.IPv4(1, 1, 1, 1),
-		Port:  80,
-	}
+func TestAppServicesManagement(t *testing.T) {
+	ip1 := net.IPv4(1, 1, 1, 1).String()
+	ip2 := net.IPv4(2, 2, 2, 2).String()
 
-	as2 := AppService{
-		Proto: "HTTP",
-		IP:    net.IPv4(2, 2, 2, 2),
-		Port:  80,
-	}
+	Add("HTTP", ip1, 80)
+	Add("HTTP", ip1, 80)
+	Add("HTTP", ip2, 80)
 
-	asm := NewAppServiceManager()
-	asm.Add(&as1)
-	asm.Add(&as1)
-	asm.Add(&as2)
-
-	as := asm.Get(as1.IP, as1.Port)
-	if as != &as1 {
+	proto, _ := Get(ip1, 80)
+	if proto != "HTTP" {
 		t.Error("AppService: get AppService with error.")
 	}
 
-	as = asm.Get(as2.IP, as2.Port)
-	if as != &as2 {
+	proto, _ = Get(ip2, 80)
+	if proto != "HTTP" {
 		t.Error("AppService: get AppService with error.")
 	}
 }

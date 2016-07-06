@@ -27,7 +27,7 @@ var (
 )
 
 func init() {
-	netDev = "lo0"
+	netDev = "en0"
 	logDir = "/var/log"
 	logFile = "ntrace"
 	logLevel = log.DebugLevel
