@@ -176,6 +176,13 @@ type TestAnalyzer struct {
 	RecvDataFromServer []byte
 }
 
+func (a *TestAnalyzer) Init() {
+}
+
+func (a *TestAnalyzer) Proto() string {
+	return "TEST"
+}
+
 func (a *TestAnalyzer) HandleEstb(timestamp time.Time) {
 	return
 }

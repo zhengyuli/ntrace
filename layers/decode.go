@@ -14,13 +14,7 @@ type Decoder interface {
 
 var NullDecoder Decoder
 
-type IPDecoder interface {
-	Decoder
-	GetSrcIP() string
-	GetDstIP() string
-}
-
-type DecodeContext struct {
+type Packet struct {
 	Time             time.Time
 	DatalinkDecoder  Decoder
 	NetworkDecoder   Decoder

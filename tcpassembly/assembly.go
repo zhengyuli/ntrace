@@ -8,6 +8,8 @@ import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"math"
+	"net"
+	"reflect"
 	"time"
 )
 
@@ -232,22 +234,29 @@ func (a *Assembler) handleClosingTimeout(stream *Stream, timestamp time.Time) {
 }
 
 func (a *Assembler) findStream(ipDecoder layers.Decoder, tcp *layers.TCP) (*Stream, Direction) {
-	// TODO: IPv6 support
-	ip := ipDecoder.(*layers.IPv4)
+	var srcIP, dstIP net.IP
+
+	if ip4, ok := ipDecoder.(*layers.IPv4); ok {
+		srcIP = ip4.SrcIP
+		dstIP = ip4.DstIP
+	} else {
+		log.Errorf("Unsupported network decoder: %s.", reflect.TypeOf(ipDecoder))
+		return nil, FromClient
+	}
 
 	stream := a.Streams[Tuple4{
-		SrcIP:   ip.SrcIP.String(),
+		SrcIP:   srcIP.String(),
 		SrcPort: tcp.SrcPort,
-		DstIP:   ip.DstIP.String(),
+		DstIP:   dstIP.String(),
 		DstPort: tcp.DstPort}]
 	if stream != nil {
 		return stream, FromClient
 	}
 
 	stream = a.Streams[Tuple4{
-		SrcIP:   ip.DstIP.String(),
+		SrcIP:   dstIP.String(),
 		SrcPort: tcp.DstPort,
-		DstIP:   ip.SrcIP.String(),
+		DstIP:   srcIP.String(),
 		DstPort: tcp.SrcPort}]
 	if stream != nil {
 		return stream, FromServer
@@ -257,13 +266,20 @@ func (a *Assembler) findStream(ipDecoder layers.Decoder, tcp *layers.TCP) (*Stre
 }
 
 func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timestamp time.Time) {
-	// TODO: IPv6 support
-	ip := ipDecoder.(*layers.IPv4)
+	var srcIP, dstIP net.IP
+
+	if ip4, ok := ipDecoder.(*layers.IPv4); ok {
+		srcIP = ip4.SrcIP
+		dstIP = ip4.DstIP
+	} else {
+		log.Errorf("Unsupported network decoder: %s.", reflect.TypeOf(ipDecoder))
+		return
+	}
 
 	addr := Tuple4{
-		SrcIP:   ip.SrcIP.String(),
+		SrcIP:   srcIP.String(),
 		SrcPort: tcp.SrcPort,
-		DstIP:   ip.DstIP.String(),
+		DstIP:   dstIP.String(),
 		DstPort: tcp.DstPort}
 	stream := &Stream{
 		Addr:  addr,
