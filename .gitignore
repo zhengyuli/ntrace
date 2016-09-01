@@ -1,1 +1,7 @@
+### Files for C/Golang
+*.o
+*.a
+*.obj
+TAGS
+
 ntrace
