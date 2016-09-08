@@ -134,7 +134,7 @@ enum flags
 
 
 /* Map for errno-related constants
- * 
+ *
  * The provided argument should be a macro that takes 2 arguments.
  */
 #define HTTP_ERRNO_MAP(XX)                                           \
@@ -218,6 +218,9 @@ struct http_parser {
 
   /** PUBLIC **/
   void *data; /* A pointer to get hook to the "connection" or "socket" object */
+
+  /** Custom variables **/
+  uint64_t customData;  /* A custom variable to hold simple data */
 };
 
 

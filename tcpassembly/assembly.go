@@ -2,7 +2,6 @@ package tcpassembly
 
 import (
 	"bitbucket.org/zhengyuli/ntrace/analyzer"
-	"bitbucket.org/zhengyuli/ntrace/analyzer/dumy"
 	"bitbucket.org/zhengyuli/ntrace/layers"
 	"container/list"
 	"fmt"
@@ -132,12 +131,14 @@ func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream,
 
 	log.Debugf("Tcp assembly: tcp connection %s get %d bytes data %s.", stream.Addr, len(rcv.RecvData), direction)
 
+	var parseBytes int
 	var sessionDone bool
 	if direction == FromClient {
-		sessionDone = stream.Analyzer.HandleData(&rcv.RecvData, true, timestamp)
+		parseBytes, sessionDone = stream.Analyzer.HandleData(rcv.RecvData, true, timestamp)
 	} else {
-		sessionDone = stream.Analyzer.HandleData(&rcv.RecvData, false, timestamp)
+		parseBytes, sessionDone = stream.Analyzer.HandleData(rcv.RecvData, false, timestamp)
 	}
+	rcv.RecvData = rcv.RecvData[parseBytes:]
 	if sessionDone {
 		log.Debug("Tcp assembly: handle data session done.")
 	}
@@ -295,7 +296,7 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 			ExpRcvSeq: tcp.Seq + 1,
 			RecvData:  make([]byte, 0, 4096),
 		},
-		Analyzer: analyzer.GetAnalyzer(dumy.Proto),
+		Analyzer: analyzer.GetAnalyzer("HTTP"),
 	}
 	a.Count++
 	a.Streams[addr] = stream

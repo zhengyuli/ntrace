@@ -32,6 +32,7 @@ build:
 	@echo "Building HTTP Parser... .. ."
 	$(CC) $(CFLAGS) -c http_parser.c -o http_parser.o
 	$(AR) rcs libhttp_parser.a http_parser.o
+	rm -f *.o
 
 clean:
 	rm -f *.o *.a

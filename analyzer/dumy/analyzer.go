@@ -6,36 +6,36 @@ import (
 )
 
 const (
-	Proto = "DUMY"
+	ProtoName = "DUMY"
 )
 
-type DumyAnalyzer struct {
+type Analyzer struct {
 }
 
-func (da *DumyAnalyzer) Init() {
-	log.Info("DumyAnalyzer: dumy init.")
+func (a *Analyzer) Init() {
+	log.Info("Dumy Analyzer: dumy init.")
 }
 
-func (da *DumyAnalyzer) Proto() string {
-	return Proto
+func (a *Analyzer) Proto() string {
+	return ProtoName
 }
 
-func (da *DumyAnalyzer) HandleEstb(timestamp time.Time) {
-	log.Info("DumyAnalyzer: dumy HandleEstb.")
+func (a *Analyzer) HandleEstb(timestamp time.Time) {
+	log.Info("Dumy Analyzer: dumy HandleEstb.")
 }
 
-func (da *DumyAnalyzer) HandleData(payload *[]byte, fromClient bool, timestamp time.Time) (sessionDone bool) {
-	log.Infof("DumyAnalyzer: from client=%t get %d bytes data %s...", fromClient, len(*payload), string((*payload)[1:32]))
-	*payload = (*payload)[len(*payload):]
+func (a *Analyzer) HandleData(payload []byte, fromClient bool, timestamp time.Time) (parseBytes int, sessionDone bool) {
+	log.Infof("Dumy Analyzer: from client=%t get %d bytes data %s...",
+		fromClient, len(payload), string((payload)[1:32]))
+	return len(payload), false
+}
+
+func (a *Analyzer) HandleReset(fromClient bool, timestamp time.Time) (sessionDone bool) {
+	log.Infof("Dumy Analyzer: from client=%t get rest.", fromClient)
 	return false
 }
 
-func (da *DumyAnalyzer) HandleReset(fromClient bool, timestamp time.Time) (sessionDone bool) {
-	log.Infof("DumyAnalyzer: from client=%t get rest.", fromClient)
-	return false
-}
-
-func (da *DumyAnalyzer) HandleFin(fromClient bool, timestamp time.Time) (sessionDone bool) {
-	log.Infof("DumyAnalyzer: from client=%t get fin.", fromClient)
+func (a *Analyzer) HandleFin(fromClient bool, timestamp time.Time) (sessionDone bool) {
+	log.Infof("Dumy Analyzer: from client=%t get fin.", fromClient)
 	return false
 }

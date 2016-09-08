@@ -318,17 +318,17 @@ func tcpProcessService(
 func tcpAssemblyService(index int, tcpAssemblyChannel chan *layers.Packet, wg *sync.WaitGroup) {
 	assembler := tcpassembly.NewAssembler()
 
-	defer func() {
-		err := recover()
-		if err != nil {
-			log.Errorf("TcpAssemblyService run with error: %s.", err)
-			runState.stop()
-		} else {
-			log.Info("TcpAssemblyService exit normally... .. .")
-		}
-		log.Infof("tcpAssemblyService: %d got %d tcp streams.", index, assembler.Count)
-		wg.Done()
-	}()
+	// defer func() {
+	// 	err := recover()
+	// 	if err != nil {
+	// 		log.Errorf("TcpAssemblyService run with error: %s.", err)
+	// 		runState.stop()
+	// 	} else {
+	// 		log.Info("TcpAssemblyService exit normally... .. .")
+	// 	}
+	// 	log.Infof("tcpAssemblyService: %d got %d tcp streams.", index, assembler.Count)
+	// 	wg.Done()
+	// }()
 
 	timer := time.NewTimer(time.Second)
 	for !runState.stopped() {
