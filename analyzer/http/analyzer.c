@@ -1,7 +1,5 @@
 #include "_cgo_export.h"
 
-
-
 int onReqMessageBegin_cgo(http_parser* parser) {
     return onReqMessageBegin(parser);
 }
