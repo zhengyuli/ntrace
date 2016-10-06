@@ -132,15 +132,15 @@ func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream,
 	log.Debugf("Tcp assembly: tcp connection %s get %d bytes data %s.", stream.Addr, len(rcv.RecvData), direction)
 
 	var parseBytes int
-	var sessionDone bool
+	var sessionBreakdown interface{}
 	if direction == FromClient {
-		parseBytes, sessionDone = stream.Analyzer.HandleData(rcv.RecvData, true, timestamp)
+		parseBytes, sessionBreakdown = stream.Analyzer.HandleData(rcv.RecvData, true, timestamp)
 	} else {
-		parseBytes, sessionDone = stream.Analyzer.HandleData(rcv.RecvData, false, timestamp)
+		parseBytes, sessionBreakdown = stream.Analyzer.HandleData(rcv.RecvData, false, timestamp)
 	}
 	rcv.RecvData = rcv.RecvData[parseBytes:]
-	if sessionDone {
-		log.Debug("Tcp assembly: handle data session done.")
+	if sessionBreakdown != nil {
+		log.Debugf("Tcp assembly session breakdown: %#v.", sessionBreakdown)
 	}
 }
 
@@ -161,16 +161,16 @@ func (a *Assembler) handleReset(stream *Stream, snd *HalfStream, rcv *HalfStream
 			stream.State = StreamResetByServerBeforeConn
 		}
 	} else {
-		var sessionDone bool
+		var sessionBreakdown interface{}
 		if direction == FromClient {
 			stream.State = StreamResetByClientAferConn
-			sessionDone = stream.Analyzer.HandleReset(true, timestamp)
+			sessionBreakdown = stream.Analyzer.HandleReset(true, timestamp)
 		} else {
 			stream.State = StreamResetByServerAferConn
-			sessionDone = stream.Analyzer.HandleReset(false, timestamp)
+			sessionBreakdown = stream.Analyzer.HandleReset(false, timestamp)
 		}
-		if sessionDone {
-			log.Debug("Tcp assembly: handle reset session done.")
+		if sessionBreakdown != nil {
+			log.Debug("Tcp assembly session breakdown: %#v.", sessionBreakdown)
 		}
 	}
 
@@ -194,14 +194,14 @@ func (a *Assembler) handleFin(stream *Stream, snd *HalfStream, rcv *HalfStream, 
 	a.addClosingStream(stream, timestamp)
 
 	if !lazyMode {
-		var sessionDone bool
+		var sessionBreakdown interface{}
 		if direction == FromClient {
-			sessionDone = stream.Analyzer.HandleFin(true, timestamp)
+			sessionBreakdown = stream.Analyzer.HandleFin(true, timestamp)
 		} else {
-			sessionDone = stream.Analyzer.HandleFin(false, timestamp)
+			sessionBreakdown = stream.Analyzer.HandleFin(false, timestamp)
 		}
-		if sessionDone {
-			log.Debug("Tcp assembly: handle fin session done.")
+		if sessionBreakdown != nil {
+			log.Debug("Tcp assembly session breakdown: %#v.", sessionBreakdown)
 		}
 	}
 }

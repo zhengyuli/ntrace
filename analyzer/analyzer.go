@@ -10,9 +10,9 @@ type Analyzer interface {
 	Init()
 	Proto() string
 	HandleEstb(timestamp time.Time)
-	HandleData(payload []byte, fromClient bool, timestamp time.Time) (parseBytes int, sessionDone bool)
-	HandleReset(fromClient bool, timestamp time.Time) (sessionDone bool)
-	HandleFin(fromClient bool, timestamp time.Time) (sessionDone bool)
+	HandleData(payload []byte, fromClient bool, timestamp time.Time) (parseBytes int, sessionBreakdown interface{})
+	HandleReset(fromClient bool, timestamp time.Time) (sessionBreakdown interface{})
+	HandleFin(fromClient bool, timestamp time.Time) (sessionBreakdown interface{})
 }
 
 func GetAnalyzer(proto string) Analyzer {

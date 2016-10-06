@@ -53,7 +53,7 @@ const (
 func (s sessionState) String() string {
 	switch s {
 	case sessionInit:
-		return "SessionInit"
+		return "HttpSessionInit"
 
 	case requestHeaderBegin:
 		return "HttpRequestHeaderBegin"
@@ -80,7 +80,7 @@ func (s sessionState) String() string {
 		return "HttpResponseBodyComplete"
 
 	default:
-		return "InvalidSessionState"
+		return "InvalidHttpSessionState"
 	}
 }
 
@@ -108,6 +108,53 @@ type session struct {
 	respCompleteTime time.Time
 }
 
+func (s session) session2Breakdown() *SessionBreakdown {
+	sb := new(SessionBreakdown)
+
+	sb.SessionState = s.state.String()
+
+	sb.ReqVer = s.reqVer
+	sb.ReqMethod = s.reqMethod
+	sb.ReqURI = s.reqURI
+	sb.ReqHeaders = make(map[string]string)
+	for _, h := range s.reqHeaders {
+		sb.ReqHeaders[h.name] = h.value
+	}
+	sb.ReqHeaderSize = s.reqHeaderSize
+	sb.ReqBodySize = s.reqBodySize
+
+	sb.RespVer = s.respVer
+	sb.RespHeaders = make(map[string]string)
+	for _, h := range s.respHeaders {
+		sb.RespHeaders[h.name] = h.value
+	}
+	sb.StatusCode = s.statusCode
+	sb.RespHeaderSize = s.respBodySize
+	sb.RespBodySize = s.respBodySize
+
+	sb.ServerLatency = uint(s.respBeginTime.Sub(s.reqTime).Nanoseconds() / 1000000)
+	sb.DownloadLatency = uint(s.respCompleteTime.Sub(s.respBeginTime).Nanoseconds() / 1000000)
+
+	return sb
+}
+
+type SessionBreakdown struct {
+	SessionState    string            `json:"session_state"`
+	ReqVer          string            `json:"request_version"`
+	ReqMethod       string            `json:"request_method"`
+	ReqURI          string            `json:"request_uri"`
+	ReqHeaders      map[string]string `json:"request_headers"`
+	ReqHeaderSize   uint              `json:"request_header_size"`
+	ReqBodySize     uint              `json:"request_body_size"`
+	RespVer         string            `json:"response_version"`
+	RespHeaders     map[string]string `json:"response_headers"`
+	StatusCode      uint16            `json:"response_status_code"`
+	RespHeaderSize  uint              `json:"response_header_size"`
+	RespBodySize    uint              `json:"response_body_size"`
+	ServerLatency   uint              `json:"server_latency"`
+	DownloadLatency uint              `json:"download_latency"`
+}
+
 //export onReqMessageBegin
 func onReqMessageBegin(parser *C.http_parser) C.int {
 	analyzer := (*Analyzer)(unsafe.Pointer(uintptr(parser.customData)))
@@ -131,7 +178,7 @@ func onReqURL(parser *C.http_parser, from *C.char, length C.size_t) C.int {
 		currSession.reqMethod = C.GoString((*C.char)(C.http_method_str(C.enum_http_method(parser.method))))
 		currSession.reqURI = C.GoStringN(from, C.int(length))
 	} else {
-		log.Error("http.Analyzer:onReqURL does not find the proper session.")
+		log.Error("http.Analyzer:onReqURL does not find session.")
 	}
 
 	return C.int(0)
@@ -148,7 +195,7 @@ func onReqHeaderField(parser *C.http_parser, from *C.char, length C.size_t) C.in
 		headerName := C.GoStringN(from, C.int(length))
 		currSession.reqHeaders = append(currSession.reqHeaders, header{name: headerName})
 	} else {
-		log.Error("http.Analyzer:onReqHeaderField does not find the proper session.")
+		log.Error("http.Analyzer:onReqHeaderField does not find session.")
 	}
 
 	return C.int(0)
@@ -164,7 +211,7 @@ func onReqHeaderValue(parser *C.http_parser, from *C.char, length C.size_t) C.in
 		headerValue := C.GoStringN(from, C.int(length))
 		currSession.reqHeaders[len(currSession.reqHeaders)-1].value = headerValue
 	} else {
-		log.Error("http.Analyzer:onReqHeaderValue does not find the proper session.")
+		log.Error("http.Analyzer:onReqHeaderValue does not find session.")
 	}
 
 	return C.int(0)
@@ -181,7 +228,7 @@ func onReqHeadersComplete(parser *C.http_parser) C.int {
 		currSession.reqVer = fmt.Sprintf("HTTP/%d.%d", parser.http_major, parser.http_minor)
 		currSession.reqHeaderSize = uint(parser.nread)
 	} else {
-		log.Error("http.Analyzer:onReqURL does not find the proper session.")
+		log.Error("http.Analyzer:onReqURL does not find session.")
 	}
 
 	return C.int(0)
@@ -197,7 +244,7 @@ func onReqBody(parser *C.http_parser, from *C.char, length C.size_t) C.int {
 
 		currSession.reqBodySize += uint(length)
 	} else {
-		log.Error("http.Analyzer:onReqURL does not find the proper session.")
+		log.Error("http.Analyzer:onReqURL does not find session.")
 	}
 
 	return C.int(0)
@@ -211,7 +258,7 @@ func onReqMessageComplete(parser *C.http_parser) C.int {
 		currSession := back.Value.(*session)
 		currSession.state = requestBodyComplete
 	} else {
-		log.Error("http.Analyzer:onReqURL does not find the proper session.")
+		log.Error("http.Analyzer:onReqURL does not find session.")
 	}
 
 	return C.int(0)
@@ -226,7 +273,7 @@ func onRespMessageBegin(parser *C.http_parser) C.int {
 
 		currSession.respBeginTime = analyzer.timestamp
 	} else {
-		log.Error("http.Analyzer:onReqURL does not find the proper session.")
+		log.Error("http.Analyzer:onReqURL does not find session.")
 	}
 
 	return C.int(0)
@@ -248,7 +295,7 @@ func onRespHeaderField(parser *C.http_parser, from *C.char, length C.size_t) C.i
 		headerName := C.GoStringN(from, C.int(length))
 		currSession.respHeaders = append(currSession.respHeaders, header{name: headerName})
 	} else {
-		log.Error("http.Analyzer:onReqURL does not find the proper session.")
+		log.Error("http.Analyzer:onReqURL does not find session.")
 	}
 
 	return C.int(0)
@@ -265,7 +312,7 @@ func onRespHeaderValue(parser *C.http_parser, from *C.char, length C.size_t) C.i
 		headerValue := C.GoStringN(from, C.int(length))
 		currSession.respHeaders[len(currSession.respHeaders)-1].value = headerValue
 	} else {
-		log.Error("http.Analyzer:onReqURL does not find the proper session.")
+		log.Error("http.Analyzer:onReqURL does not find session.")
 	}
 
 	return C.int(0)
@@ -283,7 +330,7 @@ func onRespHeadersComplete(parser *C.http_parser) C.int {
 		currSession.respVer = fmt.Sprintf("HTTP/%d.%d", parser.http_major, parser.http_minor)
 		currSession.respHeaderSize = uint(parser.nread)
 	} else {
-		log.Error("http.Analyzer:onReqURL does not find the proper session.")
+		log.Error("http.Analyzer:onReqURL does not find session.")
 	}
 
 	return C.int(0)
@@ -299,7 +346,7 @@ func onRespBody(parser *C.http_parser, from *C.char, length C.size_t) C.int {
 
 		currSession.respBodySize += uint(length)
 	} else {
-		log.Error("http.Analyzer:onReqURL does not find the proper session.")
+		log.Error("http.Analyzer:onReqURL does not find session.")
 	}
 
 	return C.int(0)
@@ -315,7 +362,7 @@ func onRespMessageComplete(parser *C.http_parser) C.int {
 
 		currSession.respCompleteTime = analyzer.timestamp
 	} else {
-		log.Error("http.Analyzer:onReqURL does not find the proper session.")
+		log.Error("http.Analyzer:onReqURL does not find session.")
 	}
 
 	return C.int(0)
@@ -362,7 +409,7 @@ func (a *Analyzer) HandleEstb(timestamp time.Time) {
 	log.Info("Http Analyzer: http HandleEstb.")
 }
 
-func (a *Analyzer) HandleData(payload []byte, fromClient bool, timestamp time.Time) (parseBytes int, sessionDone bool) {
+func (a *Analyzer) HandleData(payload []byte, fromClient bool, timestamp time.Time) (parseBytes int, sessionBreakdown interface{}) {
 	a.timestamp = timestamp
 
 	var parsed C.size_t
@@ -384,23 +431,24 @@ func (a *Analyzer) HandleData(payload []byte, fromClient bool, timestamp time.Ti
 	}
 
 	if currSession == nil || currSession.state != responseBodyComplete {
-		return int(parsed), false
+		return int(parsed), nil
 	}
 
-	return int(parsed), true
+	return int(parsed), currSession.session2Breakdown()
 }
 
-func (a *Analyzer) HandleReset(fromClient bool, timestamp time.Time) (sessionDone bool) {
+func (a *Analyzer) HandleReset(fromClient bool, timestamp time.Time) (sessionBreakdown interface{}) {
 	log.Infof("Http Analyzer: from client=%t get rest.", fromClient)
-	return true
+
+	return nil
 }
 
-func (a *Analyzer) HandleFin(fromClient bool, timestamp time.Time) (sessionDone bool) {
+func (a *Analyzer) HandleFin(fromClient bool, timestamp time.Time) (sessionBreakdown interface{}) {
 	log.Infof("Http Analyzer: from client=%t get fin.", fromClient)
 
 	for e := a.sessions.Front(); e != nil; e = e.Next() {
-		fmt.Printf("%#v\n", *(e.Value.(*session)))
+		log.Infof("%#v\n", *(e.Value.(*session)))
 	}
 
-	return true
+	return nil
 }
