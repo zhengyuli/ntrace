@@ -48,7 +48,7 @@ func (v VLAN) String() string {
 	desc += fmt.Sprintf("priority=%d, ", v.Priority)
 	desc += fmt.Sprintf("dropEligible=%v, ", v.DropEligible)
 	desc += fmt.Sprintf("id=%d, ", v.ID)
-	desc += fmt.Sprintf("ethernetType=%s", v.EthernetType)
+	desc += fmt.Sprintf("ethernetType=%s", v.EthernetType.Name())
 
 	return desc
 }

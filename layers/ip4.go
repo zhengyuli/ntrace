@@ -147,7 +147,7 @@ func (ip IPv4) String() string {
 	desc += fmt.Sprintf("DF=%t, ", ip.DF)
 	desc += fmt.Sprintf("fragOffset=%d, ", ip.FragOffset)
 	desc += fmt.Sprintf("TTL=%d, ", ip.TTL)
-	desc += fmt.Sprintf("protocol=%s, ", ip.Protocol)
+	desc += fmt.Sprintf("protocol=%s, ", ip.Protocol.Name())
 	desc += fmt.Sprintf("checksum=%d, ", ip.Checksum)
 	desc += fmt.Sprintf("srcIP=%s, ", ip.SrcIP)
 	desc += fmt.Sprintf("dstIP=%s, ", ip.DstIP)

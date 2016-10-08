@@ -69,7 +69,7 @@ func (eth Ethernet) String() string {
 
 	desc += fmt.Sprintf("srcMac=%s, ", eth.SrcMAC)
 	desc += fmt.Sprintf("dstMac=%s, ", eth.DstMAC)
-	desc += fmt.Sprintf("ethernetType=%s", eth.EthernetType)
+	desc += fmt.Sprintf("ethernetType=%s", eth.EthernetType.Name())
 
 	return desc
 }
