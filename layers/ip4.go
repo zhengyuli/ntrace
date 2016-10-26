@@ -73,13 +73,13 @@ func (ip *IPv4) Decode(data []byte) error {
 	ip.DstIP = data[16:20]
 
 	if int(ip.IHL*4) < 20 {
-		return fmt.Errorf("Invalid (too small) IPv4 header length (%d < 20)", ip.IHL*4)
+		return fmt.Errorf("invalid (too small) IPv4 header length (%d < 20)", ip.IHL*4)
 	}
 	if int(ip.Length) < int(ip.IHL*4) {
-		return fmt.Errorf("Invalid IPv4 length < IPv4 header length (%d < %d)", ip.Length, ip.IHL*4)
+		return fmt.Errorf("invalid IPv4 length < IPv4 header length (%d < %d)", ip.Length, ip.IHL*4)
 	}
 	if len(data) < int(ip.Length) {
-		return fmt.Errorf("Invalid (too small) IPv4 capture length < IPv4 length (%d < %d)", len(data), ip.Length)
+		return fmt.Errorf("invalid (too small) IPv4 capture length < IPv4 length (%d < %d)", len(data), ip.Length)
 	}
 
 	data = data[:ip.Length]
@@ -132,7 +132,7 @@ func (ip *IPv4) NextLayerDecoder() Decoder {
 		return new(TCP)
 
 	default:
-		return NullDecoder
+		return nil
 	}
 }
 

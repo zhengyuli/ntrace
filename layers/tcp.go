@@ -44,10 +44,10 @@ func (tcp *TCP) Decode(data []byte) error {
 	tcp.Urgent = binary.BigEndian.Uint16(data[18:20])
 
 	if int(tcp.DataOffset*4) < 20 {
-		return fmt.Errorf("Invalid (too small) TCP header length (%d < 20)", tcp.DataOffset*4)
+		return fmt.Errorf("invalid (too small) TCP header length (%d < 20)", tcp.DataOffset*4)
 	}
 	if len(data) < int(tcp.DataOffset*4) {
-		return fmt.Errorf("Invalid (too small) TCP capture length < TCP header length (%d < %d)", len(data), tcp.DataOffset*4)
+		return fmt.Errorf("invalid (too small) TCP capture length < TCP header length (%d < %d)", len(data), tcp.DataOffset*4)
 	}
 
 	tcp.Contents = data[:tcp.DataOffset*4]
@@ -87,11 +87,11 @@ func (tcp *TCP) Decode(data []byte) error {
 }
 
 func (tcp *TCP) NextLayerType() LayerType {
-	return NullLayer
+	return nil
 }
 
 func (tcp *TCP) NextLayerDecoder() Decoder {
-	return NullDecoder
+	return nil
 }
 
 func (tcp TCP) String() string {

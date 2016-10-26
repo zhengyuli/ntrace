@@ -22,7 +22,7 @@ func (dt DatalinkType) Name() string {
 		return "Ethernet"
 
 	default:
-		return fmt.Sprintf("Datalink type 0x%04X", uint16(dt))
+		return fmt.Sprintf("datalink type 0x%04X", uint16(dt))
 	}
 }
 
@@ -36,6 +36,6 @@ func (dt DatalinkType) NewDecoder() Decoder {
 		return new(Ethernet)
 
 	default:
-		return NullDecoder
+		return nil
 	}
 }

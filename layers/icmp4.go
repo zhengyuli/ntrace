@@ -14,7 +14,7 @@ type ICMPv4 struct {
 
 func (icmp *ICMPv4) Decode(data []byte) error {
 	if len(data) < 8 {
-		return fmt.Errorf("Invalid (too small) ICMPv4 capture length (%d < 8)", len(data))
+		return fmt.Errorf("invalid (too small) ICMPv4 capture length (%d < 8)", len(data))
 	}
 
 	icmp.Type = uint8(data[0])
@@ -27,11 +27,11 @@ func (icmp *ICMPv4) Decode(data []byte) error {
 }
 
 func (icmp *ICMPv4) NextLayerType() LayerType {
-	return NullLayer
+	return nil
 }
 
 func (icmp *ICMPv4) NextLayerDecoder() Decoder {
-	return NullDecoder
+	return nil
 }
 
 func (icmp ICMPv4) String() string {

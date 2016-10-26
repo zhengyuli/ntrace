@@ -12,8 +12,6 @@ type Decoder interface {
 	NextLayerDecoder() Decoder
 }
 
-var NullDecoder Decoder
-
 type Packet struct {
 	Time             time.Time
 	DatalinkDecoder  Decoder

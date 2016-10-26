@@ -351,6 +351,7 @@ func (a *Assembler) addFromPage(stream *Stream, snd *HalfStream, rcv *HalfStream
 				page.Payload[seqDiff(rcv.ExpRcvSeq, page.Seq):]...)
 		}
 	} else {
+		log.Debugf("seqDiff %d, page Payload len %d", seqDiff(rcv.ExpRcvSeq, page.Seq), len(page.Payload))
 		rcv.RecvData = append(
 			rcv.RecvData,
 			page.Payload[seqDiff(rcv.ExpRcvSeq, page.Seq):]...)

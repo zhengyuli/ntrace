@@ -22,7 +22,7 @@ func (et EthernetType) Name() string {
 		return "VLAN"
 
 	default:
-		return fmt.Sprintf("Ethernet type 0x%04X", uint16(et))
+		return fmt.Sprintf("ethernet type 0x%04X", uint16(et))
 	}
 }
 
@@ -35,7 +35,7 @@ type Ethernet struct {
 
 func (eth *Ethernet) Decode(data []byte) error {
 	if len(data) < 14 {
-		return fmt.Errorf("Invalid (too small) Ethernet capture length (%d < 14)", len(data))
+		return fmt.Errorf("invalid (too small) Ethernet capture length (%d < 14)", len(data))
 	}
 
 	eth.DstMAC = net.HardwareAddr(data[0:6])
@@ -60,7 +60,7 @@ func (eth *Ethernet) NextLayerDecoder() Decoder {
 		return new(VLAN)
 
 	default:
-		return NullDecoder
+		return nil
 	}
 }
 

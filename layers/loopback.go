@@ -17,7 +17,7 @@ func (pf ProtocolFamily) Name() string {
 		return "IPv4"
 
 	default:
-		return fmt.Sprintf("Loopback protocol family 0x%04X", uint16(pf))
+		return fmt.Sprintf("loopback protocol family 0x%04X", uint16(pf))
 	}
 }
 
@@ -28,7 +28,7 @@ type Loopback struct {
 
 func (l *Loopback) Decode(data []byte) error {
 	if len(data) < 4 {
-		return fmt.Errorf("Invalid (too small) Loopback capture length (%d < 8)", len(data))
+		return fmt.Errorf("invalid (too small) Loopback capture length (%d < 8)", len(data))
 	}
 
 	var prot uint32
@@ -54,7 +54,7 @@ func (l *Loopback) NextLayerDecoder() Decoder {
 		return new(IPv4)
 
 	default:
-		return NullDecoder
+		return nil
 	}
 }
 

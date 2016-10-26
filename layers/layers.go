@@ -4,16 +4,6 @@ type LayerType interface {
 	Name() string
 }
 
-type NullLayerType uint8
-
-const (
-	NullLayer NullLayerType = 0x00
-)
-
-func (n NullLayerType) Name() string {
-	return "NullLayer"
-}
-
 // Base is a convenience struct which implements the LayerContents and
 // LayerPayload functions of the Layer interface.
 type Base struct {

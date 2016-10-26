@@ -16,7 +16,7 @@ type VLAN struct {
 
 func (v *VLAN) Decode(data []byte) error {
 	if len(data) < 4 {
-		return fmt.Errorf("Invalid (too small) VLAN capture length (%d < 4)", len(data))
+		return fmt.Errorf("invalid (too small) VLAN capture length (%d < 4)", len(data))
 	}
 
 	v.Priority = (uint8(data[0]) & 0xE0) >> 5
@@ -39,7 +39,7 @@ func (v *VLAN) NextLayerDecoder() Decoder {
 		return new(IPv4)
 
 	default:
-		return NullDecoder
+		return nil
 	}
 }
 

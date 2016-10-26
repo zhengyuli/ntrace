@@ -130,7 +130,7 @@ func datalinkCaptureService(netDev string, ipDispatchChannel chan *layers.Packet
 
 			layerType := handle.DatalinkType()
 			decoder := layerType.NewDecoder()
-			if decoder == layers.NullDecoder {
+			if decoder == nil {
 				panic(fmt.Errorf("No proper decoder for %s.", layerType.Name()))
 			}
 			if err = decoder.Decode(pkt.Data); err != nil {
@@ -176,7 +176,7 @@ func ipProcessService(
 		case packet := <-ipDispatchChannel:
 			layerType := packet.DatalinkDecoder.NextLayerType()
 			decoder := packet.DatalinkDecoder.NextLayerDecoder()
-			if decoder == layers.NullDecoder {
+			if decoder == nil {
 				log.Errorf("No proper decoder for %s.", layerType.Name())
 				continue
 			}
@@ -223,7 +223,7 @@ func icmpProcessService(icmpDispatchChannel chan *layers.Packet, wg *sync.WaitGr
 		case packet := <-icmpDispatchChannel:
 			layerType := packet.NetworkDecoder.NextLayerType()
 			decoder := packet.NetworkDecoder.NextLayerDecoder()
-			if decoder == layers.NullDecoder {
+			if decoder == nil {
 				log.Errorf("No proper decoder for %s.", layerType.Name())
 				continue
 			}
@@ -286,7 +286,7 @@ func tcpProcessService(
 		case packet := <-tcpDispatchChannel:
 			layerType := packet.NetworkDecoder.NextLayerType()
 			decoder := packet.NetworkDecoder.NextLayerDecoder()
-			if decoder == layers.NullDecoder {
+			if decoder == nil {
 				log.Errorf("No proper decoder for %s.", layerType.Name())
 				continue
 			}
@@ -319,13 +319,13 @@ func tcpAssemblyService(index int, tcpAssemblyChannel chan *layers.Packet, wg *s
 	assembler := tcpassembly.NewAssembler()
 
 	defer func() {
-		err := recover()
-		if err != nil {
-			log.Errorf("TcpAssemblyService run with error: %s.", err)
-			runState.stop()
-		} else {
-			log.Info("TcpAssemblyService exit normally... .. .")
-		}
+		// err := recover()
+		// if err != nil {
+		// 	log.Errorf("TcpAssemblyService run with error: %s.", err)
+		// 	runState.stop()
+		// } else {
+		// 	log.Info("TcpAssemblyService exit normally... .. .")
+		// }
 		log.Infof("tcpAssemblyService: %d got %d tcp streams.", index, assembler.Count)
 		wg.Done()
 	}()
