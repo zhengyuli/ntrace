@@ -1,10 +1,10 @@
 package ip4defrag
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/layers"
 	"container/list"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
+	"github.com/zhengyuli/ntrace/layers"
 	"time"
 )
 

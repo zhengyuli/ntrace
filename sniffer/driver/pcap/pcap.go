@@ -17,9 +17,9 @@ int hack_pcap_next_ex(pcap_t *p, struct pcap_pkthdr **pkt_header, u_char **pkt_d
 import "C"
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/layers"
-	"bitbucket.org/zhengyuli/ntrace/sniffer/driver"
 	"errors"
+	"github.com/zhengyuli/ntrace/layers"
+	"github.com/zhengyuli/ntrace/sniffer/driver"
 	"time"
 	"unsafe"
 )

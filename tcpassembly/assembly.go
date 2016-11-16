@@ -1,16 +1,27 @@
 package tcpassembly
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/analyzer"
-	"bitbucket.org/zhengyuli/ntrace/layers"
 	"container/list"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
+	"github.com/zhengyuli/ntrace/analyzer"
+	"github.com/zhengyuli/ntrace/appservice"
+	"github.com/zhengyuli/ntrace/layers"
 	"math"
 	"net"
+	"os"
 	"reflect"
+	"strconv"
 	"time"
 )
+
+var TinyTcpPayloadBytes = 32
+
+func init() {
+	if payloadBytes, err := strconv.Atoi(os.Getenv("TINY_TCP_PAYLOAD_BYTES")); err != nil {
+		TinyTcpPayloadBytes = payloadBytes
+	}
+}
 
 func seqDiff(x, y uint32) int {
 	if x > math.MaxUint32-math.MaxUint32/4 && y < math.MaxUint32/4 {
@@ -69,12 +80,13 @@ type Page struct {
 }
 
 type HalfStream struct {
-	State     TcpState
-	Seq       uint32
-	Ack       uint32
-	ExpRcvSeq uint32
-	RecvData  []byte
-	Pages     list.List
+	State              TcpState
+	Seq                uint32
+	Ack                uint32
+	ExpRcvSeq          uint32
+	RecvData           []byte
+	TotalRecvDataBytes uint32
+	Pages              list.List
 }
 
 type StreamState uint16
@@ -94,15 +106,152 @@ const (
 	StreamResetByServerAferConn
 )
 
+func (s StreamState) String() string {
+	switch s {
+	case StreamConnecting:
+		return "StreamConnecting"
+
+	case StreamConnected:
+		return "StreamConnected"
+
+	case StreamDataExchanging:
+		return "StreamDataExchanging"
+
+	case StreamClosing:
+		return "StreamClosing"
+
+	case StreamClosingTimeout:
+		return "StreamClosingTimeout"
+
+	case StreamClosed:
+		return "StreamClosed"
+
+	case StreamClosedAbnormally:
+		return "StreamClosedAbnormally"
+
+	case StreamClosedExceedMaxCount:
+		return "StreamClosedExceedMaxCount"
+
+	case StreamResetByClientBeforeConn:
+		return "StreamResetByClientBeforeConn"
+
+	case StreamResetByServerBeforeConn:
+		return "StreamResetByServerBeforeConn"
+
+	case StreamResetByClientAferConn:
+		return "StreamResetByClientAferConn"
+
+	case StreamResetByServerAferConn:
+		return "StreamResetByServerAferConn"
+
+	default:
+		return "InvalidStreamState"
+	}
+}
+
 type Stream struct {
+	// Tcp connection info
 	Addr                      Tuple4
 	State                     StreamState
 	Client                    HalfStream
 	Server                    HalfStream
+	HandshakeSyncTime         time.Time
+	HandshakeSyncRetryTime    time.Time
+	HandshakeSyncAckTime      time.Time
+	HandshakeSyncAckRetryTime time.Time
+	HandshakeEstabTime        time.Time
+	HandshakeSyncRetries      uint
+	HandshakeSyncAckRetries   uint
+	MSS                       uint
+
+	// Tcp data exchanging info
+	Client2ServerBytes                uint
+	Server2ClientBytes                uint
+	Client2ServerPackets              uint
+	Server2ClientPackets              uint
+	Client2ServerTinyPackets          uint
+	Server2ClientTinyPackets          uint
+	Client2ServerRetransmittedPackets uint
+	Server2ClientRetransmittedPackets uint
+	Client2ServerOutOfOrderPackets    uint
+	Server2ClientOutOfOrderPackets    uint
+	Client2ServerDupAcks              uint
+	Server2ClientDupAcks              uint
+	ClientZeroWindows                 uint
+	ServerZeroWindows                 uint
+
+	// Tcp application layer analyzer
+	Analyzer analyzer.Analyzer
+
+	// Other
 	StreamsListElement        *list.Element
 	ClosingExpireTime         time.Time
 	ClosingStreamsListElement *list.Element
-	Analyzer                  analyzer.Analyzer
+}
+
+func (s *Stream) ResetDataExhangingInfo() {
+	s.Client2ServerBytes = 0
+	s.Server2ClientBytes = 0
+	s.Client2ServerPackets = 0
+	s.Server2ClientPackets = 0
+	s.Client2ServerTinyPackets = 0
+	s.Server2ClientTinyPackets = 0
+	s.Client2ServerRetransmittedPackets = 0
+	s.Server2ClientRetransmittedPackets = 0
+	s.Client2ServerOutOfOrderPackets = 0
+	s.Server2ClientOutOfOrderPackets = 0
+	s.Client2ServerDupAcks = 0
+	s.Server2ClientDupAcks = 0
+	s.ClientZeroWindows = 0
+	s.ServerZeroWindows = 0
+}
+
+func (s *Stream) Session2Breakdown(appSessionBreakdown interface{}) *SessionBreakdown {
+	sb := new(SessionBreakdown)
+
+	sb.Proto = s.Analyzer.Proto()
+	sb.Addr = s.Addr.String()
+	sb.MSS = s.MSS
+	sb.Client2ServerBytes = s.Client2ServerBytes
+	sb.Server2ClientBytes = s.Server2ClientBytes
+	sb.Client2ServerPackets = s.Client2ServerPackets
+	sb.Server2ClientPackets = s.Server2ClientPackets
+	sb.Client2ServerTinyPackets = s.Client2ServerTinyPackets
+	sb.Server2ClientTinyPackets = s.Server2ClientTinyPackets
+	sb.Client2ServerRetransmittedPackets = s.Client2ServerRetransmittedPackets
+	sb.Server2ClientRetransmittedPackets = s.Server2ClientRetransmittedPackets
+	sb.Client2ServerOutOfOrderPackets = s.Client2ServerOutOfOrderPackets
+	sb.Server2ClientOutOfOrderPackets = s.Server2ClientOutOfOrderPackets
+	sb.Client2ServerDupAcks = s.Client2ServerDupAcks
+	sb.Server2ClientDupAcks = s.Server2ClientDupAcks
+	sb.ClientZeroWindows = s.ClientZeroWindows
+	sb.ServerZeroWindows = s.ServerZeroWindows
+	sb.ApplicationSessionBreakdown = appSessionBreakdown
+	// Reset data exchanging info for next application session breakdown
+	s.ResetDataExhangingInfo()
+
+	return sb
+}
+
+type SessionBreakdown struct {
+	Proto                             string      `json:"proto"`
+	Addr                              string      `json:"address"`
+	MSS                               uint        `json:tcp_mss,omitempty`
+	Client2ServerBytes                uint        `json:"tcp_c2s_bytes"`
+	Server2ClientBytes                uint        `json:"tcp_s2c_bytes"`
+	Client2ServerPackets              uint        `json:"tcp_c2s_packets"`
+	Server2ClientPackets              uint        `json:"tcp_s2c_packets"`
+	Client2ServerTinyPackets          uint        `json:"tcp_c2s_tiny_packets"`
+	Server2ClientTinyPackets          uint        `json:"tcp_s2c_tiny_packets"`
+	Client2ServerRetransmittedPackets uint        `json:"tcp_c2s_retransmitted_packets"`
+	Server2ClientRetransmittedPackets uint        `json:"tcp_s2c_retransmitted_packets"`
+	Client2ServerOutOfOrderPackets    uint        `json:"tcp_c2s_out_of_order_packets"`
+	Server2ClientOutOfOrderPackets    uint        `json:"tcp_s2c_out_of_order_packets"`
+	Client2ServerDupAcks              uint        `json:"tcp_c2s_duplicate_acks"`
+	Server2ClientDupAcks              uint        `json:"tcp_s2c_duplicate_acks"`
+	ClientZeroWindows                 uint        `json:"tcp_client_zero_windows"`
+	ServerZeroWindows                 uint        `json:"tcp_server_zero_windows"`
+	ApplicationSessionBreakdown       interface{} `json:"application_session_breakdown"`
 }
 
 type Assembler struct {
@@ -110,15 +259,20 @@ type Assembler struct {
 	Streams            map[Tuple4]*Stream
 	StreamsList        list.List
 	ClosingStreamsList list.List
+	SessionBreakdowns  []interface{}
 }
 
 func (a *Assembler) handleEstb(stream *Stream, timestamp time.Time) {
-	log.Debugf("Tcp assembly: tcp connection %s connect.", stream.Addr)
+	log.Debugf("Tcp assembly: tcp connection %s is connected.", stream.Addr)
 
+	stream.State = StreamConnected
 	stream.Client.State = TcpEstablished
 	stream.Server.State = TcpEstablished
-	stream.State = StreamConnected
-	stream.Analyzer.HandleEstb(timestamp)
+	stream.HandshakeEstabTime = timestamp
+
+	if stream.Analyzer != nil {
+		stream.Analyzer.HandleEstb(timestamp)
+	}
 }
 
 func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream, timestamp time.Time) {
@@ -132,15 +286,43 @@ func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream,
 	log.Debugf("Tcp assembly: tcp connection %s get %d bytes data %s.", stream.Addr, len(rcv.RecvData), direction)
 
 	var parseBytes int
-	var sessionBreakdown interface{}
-	if direction == FromClient {
-		parseBytes, sessionBreakdown = stream.Analyzer.HandleData(rcv.RecvData, true, timestamp)
+	if stream.Analyzer != nil {
+		var appSessionBreakdown interface{}
+
+		if direction == FromClient {
+			parseBytes, appSessionBreakdown = stream.Analyzer.HandleData(rcv.RecvData, true, timestamp)
+		} else {
+			parseBytes, appSessionBreakdown = stream.Analyzer.HandleData(rcv.RecvData, false, timestamp)
+		}
+		rcv.RecvData = rcv.RecvData[parseBytes:]
+		rcv.TotalRecvDataBytes += uint32(parseBytes)
+
+		if appSessionBreakdown != nil {
+			log.Debugf("Tcp assembly: tcp connection %s generate new session breakdown by Data %s.", stream.Addr, direction)
+			a.SessionBreakdowns = append(a.SessionBreakdowns, stream.Session2Breakdown(appSessionBreakdown))
+		}
 	} else {
-		parseBytes, sessionBreakdown = stream.Analyzer.HandleData(rcv.RecvData, false, timestamp)
-	}
-	rcv.RecvData = rcv.RecvData[parseBytes:]
-	if sessionBreakdown != nil {
-		log.Debugf("Tcp assembly session breakdown: %#v.", sessionBreakdown)
+		var proto string
+
+		if direction == FromClient {
+			parseBytes, proto = analyzer.DetectProto(rcv.RecvData, true, timestamp)
+		} else {
+			parseBytes, proto = analyzer.DetectProto(rcv.RecvData, false, timestamp)
+		}
+		rcv.RecvData = rcv.RecvData[parseBytes:]
+		rcv.TotalRecvDataBytes += uint32(parseBytes)
+
+		if proto != "" ||
+			(rcv.TotalRecvDataBytes+uint32(parseBytes) > 200 && snd.TotalRecvDataBytes > 200) {
+			if proto != "" {
+				log.Debugf("Tcp assembly: detect recognizable appService=%s:%d-%s.", stream.Addr.DstIP, stream.Addr.DstPort, proto)
+				appservice.Add(proto, stream.Addr.DstIP, stream.Addr.DstPort)
+			} else {
+				log.Debugf("Tcp assembly: detect unrecognizable appService=%s:%d.", stream.Addr.DstIP, stream.Addr.DstPort)
+				appservice.AddIgnored(stream.Addr.DstIP, stream.Addr.DstPort)
+			}
+			a.removeStream(stream)
+		}
 	}
 }
 
@@ -160,17 +342,18 @@ func (a *Assembler) handleReset(stream *Stream, snd *HalfStream, rcv *HalfStream
 		} else {
 			stream.State = StreamResetByServerBeforeConn
 		}
-	} else {
-		var sessionBreakdown interface{}
+	} else if stream.Analyzer != nil {
+		var appSessionBreakdown interface{}
 		if direction == FromClient {
 			stream.State = StreamResetByClientAferConn
-			sessionBreakdown = stream.Analyzer.HandleReset(true, timestamp)
+			appSessionBreakdown = stream.Analyzer.HandleReset(true, timestamp)
 		} else {
 			stream.State = StreamResetByServerAferConn
-			sessionBreakdown = stream.Analyzer.HandleReset(false, timestamp)
+			appSessionBreakdown = stream.Analyzer.HandleReset(false, timestamp)
 		}
-		if sessionBreakdown != nil {
-			log.Debug("Tcp assembly session breakdown: %#v.", sessionBreakdown)
+		if appSessionBreakdown != nil {
+			log.Debugf("Tcp assembly: tcp connection %s generate new session breakdown by Reset %s.", stream.Addr, direction)
+			a.SessionBreakdowns = append(a.SessionBreakdowns, stream.Session2Breakdown(appSessionBreakdown))
 		}
 	}
 
@@ -193,15 +376,16 @@ func (a *Assembler) handleFin(stream *Stream, snd *HalfStream, rcv *HalfStream, 
 	stream.State = StreamClosing
 	a.addClosingStream(stream, timestamp)
 
-	if !lazyMode {
-		var sessionBreakdown interface{}
+	if !lazyMode && stream.Analyzer != nil {
+		var appSessionBreakdown interface{}
 		if direction == FromClient {
-			sessionBreakdown = stream.Analyzer.HandleFin(true, timestamp)
+			appSessionBreakdown = stream.Analyzer.HandleFin(true, timestamp)
 		} else {
-			sessionBreakdown = stream.Analyzer.HandleFin(false, timestamp)
+			appSessionBreakdown = stream.Analyzer.HandleFin(false, timestamp)
 		}
-		if sessionBreakdown != nil {
-			log.Debug("Tcp assembly session breakdown: %#v.", sessionBreakdown)
+		if appSessionBreakdown != nil {
+			log.Debugf("Tcp assembly: tcp connection %s generate new session breakdown by Fin %s.", stream.Addr, direction)
+			a.SessionBreakdowns = append(a.SessionBreakdowns, stream.Session2Breakdown(appSessionBreakdown))
 		}
 	}
 }
@@ -241,7 +425,7 @@ func (a *Assembler) findStream(ipDecoder layers.Decoder, tcp *layers.TCP) (*Stre
 		srcIP = ip4.SrcIP
 		dstIP = ip4.DstIP
 	} else {
-		log.Errorf("Unsupported network decoder: %s.", reflect.TypeOf(ipDecoder))
+		log.Errorf("Tcp assembly: unsupported network decoder=%s.", reflect.TypeOf(ipDecoder))
 		return nil, FromClient
 	}
 
@@ -273,7 +457,11 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 		srcIP = ip4.SrcIP
 		dstIP = ip4.DstIP
 	} else {
-		log.Errorf("Unsupported network decoder: %s.", reflect.TypeOf(ipDecoder))
+		log.Errorf("Tcp assembly: unsupported network decoder=%s.", reflect.TypeOf(ipDecoder))
+		return
+	}
+
+	if appservice.IsIgnored(dstIP.String(), tcp.DstPort) {
 		return
 	}
 
@@ -282,6 +470,7 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 		SrcPort: tcp.SrcPort,
 		DstIP:   dstIP.String(),
 		DstPort: tcp.DstPort}
+
 	stream := &Stream{
 		Addr:  addr,
 		State: StreamConnecting,
@@ -296,11 +485,23 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 			ExpRcvSeq: tcp.Seq + 1,
 			RecvData:  make([]byte, 0, 4096),
 		},
-		Analyzer: analyzer.GetAnalyzer("HTTP"),
+		HandshakeSyncTime:      timestamp,
+		HandshakeSyncRetryTime: timestamp,
 	}
-	a.Count++
-	a.Streams[addr] = stream
-	stream.StreamsListElement = a.StreamsList.PushBack(stream)
+	stream.MSS = tcp.GetMSSOption()
+	stream.ResetDataExhangingInfo()
+
+	if proto, err := appservice.GetProto(dstIP.String(), tcp.DstPort); err == nil {
+		stream.Analyzer = analyzer.GetAnalyzer(proto)
+	}
+
+	if stream.Analyzer != nil || a.StreamsList.Len() < 65536 {
+		if stream.Analyzer != nil {
+			a.Count++
+		}
+		a.Streams[addr] = stream
+		stream.StreamsListElement = a.StreamsList.PushBack(stream)
+	}
 
 	for a.StreamsList.Len() > 65536 {
 		stream := a.StreamsList.Front().Value.(*Stream)
@@ -351,7 +552,6 @@ func (a *Assembler) addFromPage(stream *Stream, snd *HalfStream, rcv *HalfStream
 				page.Payload[seqDiff(rcv.ExpRcvSeq, page.Seq):]...)
 		}
 	} else {
-		log.Debugf("seqDiff %d, page Payload len %d", seqDiff(rcv.ExpRcvSeq, page.Seq), len(page.Payload))
 		rcv.RecvData = append(
 			rcv.RecvData,
 			page.Payload[seqDiff(rcv.ExpRcvSeq, page.Seq):]...)
@@ -384,7 +584,14 @@ func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, t
 		}
 
 		if seqDiff(endSeq, rcv.ExpRcvSeq) <= 0 {
-			log.Debugf("Tcp assembly: tcp connection %s get retransmited packet.", stream.Addr)
+			if snd == &stream.Client {
+				log.Debugf("Tcp assembly: tcp connection %s get retransmited packet FromClient.", stream.Addr)
+				stream.Client2ServerRetransmittedPackets++
+			} else {
+				log.Debugf("Tcp assembly: tcp connection %s get retransmited packet FromServer.", stream.Addr)
+				stream.Server2ClientRetransmittedPackets++
+			}
+
 			return
 		}
 
@@ -403,6 +610,14 @@ func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, t
 			a.handleData(stream, snd, rcv, timestamp)
 		}
 	} else {
+		if snd == &stream.Client {
+			log.Debugf("Tcp assembly: tcp connection %s get out of order packet FromClient.", stream.Addr)
+			stream.Client2ServerOutOfOrderPackets++
+		} else {
+			log.Debugf("Tcp assembly: tcp connection %s get out of order packet FromServer.", stream.Addr)
+			stream.Server2ClientOutOfOrderPackets++
+		}
+
 		var e *list.Element
 		for e = rcv.Pages.Front(); e != nil; e = e.Next() {
 			if seqDiff(e.Value.(*Page).Seq, tcp.Seq) > 0 {
@@ -424,7 +639,7 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 	tcp := tcpDecoder.(*layers.TCP)
 	stream, direction := a.findStream(ipDecoder, tcp)
 	if stream == nil {
-		// The first packet of tcp three handshakes
+		// The first packet of tcp three-way handshakes
 		if tcp.SYN && !tcp.ACK && !tcp.RST {
 			a.addStream(ipDecoder, tcp, timestamp)
 		}
@@ -432,27 +647,37 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 	}
 
 	if tcp.SYN {
-		// The second packet of tcp three handshakes
+		// The second packet of tcp three-way handshakes
 		if direction == FromServer && tcp.ACK &&
 			stream.Client.State == TcpSynSent && stream.Server.State == TcpClosed {
 			stream.Server.State = TcpSynReceived
 			stream.Server.Seq = tcp.Seq
 			stream.Server.Ack = tcp.Ack
 			stream.Client.ExpRcvSeq = tcp.Seq + 1
+			stream.HandshakeSyncAckTime = timestamp
+			stream.HandshakeSyncAckRetryTime = timestamp
+			if mss := tcp.GetMSSOption(); mss > 0 && mss < stream.MSS {
+				stream.MSS = mss
+			}
+
 			return
 		}
 
 		// Tcp sync retries
 		if direction == FromClient &&
 			stream.Client.State == TcpSynSent {
-			log.Debug("tmp - Tcp syn retries.")
+			log.Debugf("Tcp assembly: tcp connection %s handshake with sync retry.", stream.Addr)
+			stream.HandshakeSyncRetryTime = timestamp
+			stream.HandshakeSyncRetries++
 			return
 		}
 
 		// Tcp sync/ack retries
 		if direction == FromServer &&
 			stream.Server.State == TcpSynReceived {
-			log.Debug("tmp - Tcp syn/ack retries.")
+			log.Debugf("Tcp assembly: tcp connection %s handshake with sync/ack retry.", stream.Addr)
+			stream.HandshakeSyncAckRetryTime = timestamp
+			stream.HandshakeSyncAckRetries++
 			return
 		}
 
@@ -478,12 +703,12 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 	}
 
 	if tcp.ACK {
-		// The third packet of tcp three handshakes
+		// The third packet of tcp three-way handshakes
 		if direction == FromClient &&
 			stream.Client.State == TcpSynSent && stream.Server.State == TcpSynReceived {
 			if tcp.Seq != stream.Server.ExpRcvSeq {
 				log.Debug("Tcp assembly: unexpected sequence=%d of the third packet of "+
-					"tcp three handshakes, expected sequence=%d.", tcp.Seq, stream.Server.ExpRcvSeq)
+					"tcp three-way handshakes, expected sequence=%d.", tcp.Seq, stream.Server.ExpRcvSeq)
 				a.handleCloseAbnormally(stream, timestamp)
 				return
 			}
@@ -494,7 +719,12 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 		if seqDiff(snd.Ack, tcp.Ack) < 0 {
 			snd.Ack = tcp.Ack
 		} else if len(tcp.Payload) == 0 {
-			log.Debug("tmp - Duplicated ack sequence.")
+			// Duplicate Ack packet
+			if direction == FromClient {
+				stream.Client2ServerDupAcks++
+			} else {
+				stream.Server2ClientDupAcks++
+			}
 		}
 
 		if rcv.State == TcpFinSent {
@@ -512,8 +742,28 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 			stream.State = StreamDataExchanging
 		}
 
-		if len(tcp.Payload) > 0 && len(tcp.Payload) <= 32 {
-			log.Debug("tmp - tiny packets.")
+		if len(tcp.Payload) > 0 {
+			if direction == FromClient {
+				stream.Client2ServerBytes += uint(len(tcp.Payload))
+				stream.Client2ServerPackets++
+				if tcp.Window == 0 {
+					stream.ClientZeroWindows++
+				}
+			} else {
+				stream.Server2ClientBytes += uint(len(tcp.Payload))
+				stream.Server2ClientPackets++
+				if tcp.Window == 0 {
+					stream.ServerZeroWindows++
+				}
+			}
+
+			if len(tcp.Payload) <= TinyTcpPayloadBytes {
+				if direction == FromClient {
+					stream.Client2ServerTinyPackets++
+				} else {
+					stream.Server2ClientTinyPackets++
+				}
+			}
 		}
 
 		a.tcpQueue(stream, snd, rcv, tcp, timestamp)

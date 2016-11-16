@@ -1,8 +1,8 @@
 package tcpassembly
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/layers"
 	log "github.com/Sirupsen/logrus"
+	"github.com/zhengyuli/ntrace/layers"
 	"net"
 	"testing"
 	"time"

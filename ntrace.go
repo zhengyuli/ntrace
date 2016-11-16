@@ -1,12 +1,13 @@
 package main
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/layers"
-	"bitbucket.org/zhengyuli/ntrace/sniffer"
-	"bitbucket.org/zhengyuli/ntrace/sniffer/driver"
-	"bitbucket.org/zhengyuli/ntrace/tcpassembly"
+	"encoding/json"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
+	"github.com/zhengyuli/ntrace/layers"
+	"github.com/zhengyuli/ntrace/sniffer"
+	"github.com/zhengyuli/ntrace/sniffer/driver"
+	"github.com/zhengyuli/ntrace/tcpassembly"
 	"hash/fnv"
 	"net"
 	"os"
@@ -94,13 +95,6 @@ func setupLogger(logDir string, logFile string, logLevel log.Level) (*os.File, e
 
 func datalinkCaptureService(netDev string, ipDispatchChannel chan *layers.Packet, wg *sync.WaitGroup) {
 	defer func() {
-		err := recover()
-		if err != nil {
-			log.Errorf("DatalinkCaptureService run with error: %s.", err)
-			runState.stop()
-		} else {
-			log.Info("DatalinkCaptureService exit normally... .. .")
-		}
 		wg.Done()
 	}()
 
@@ -154,18 +148,8 @@ func datalinkCaptureService(netDev string, ipDispatchChannel chan *layers.Packet
 	}
 }
 
-func ipProcessService(
-	ipDispatchChannel chan *layers.Packet,
-	icmpDispatchChannel chan *layers.Packet,
-	tcpDispatchChannel chan *layers.Packet, wg *sync.WaitGroup) {
+func ipProcessService(ipDispatchChannel chan *layers.Packet, icmpDispatchChannel chan *layers.Packet, tcpDispatchChannel chan *layers.Packet, wg *sync.WaitGroup) {
 	defer func() {
-		err := recover()
-		if err != nil {
-			log.Errorf("IpProcessService run with error: %s.", err)
-			runState.stop()
-		} else {
-			log.Info("IpProcessService exit normally... .. .")
-		}
 		wg.Done()
 	}()
 
@@ -206,13 +190,6 @@ func ipProcessService(
 
 func icmpProcessService(icmpDispatchChannel chan *layers.Packet, wg *sync.WaitGroup) {
 	defer func() {
-		err := recover()
-		if err != nil {
-			log.Errorf("IcmpProcessService run with error: %s.", err)
-			runState.stop()
-		} else {
-			log.Info("IcmpProcessService exit normally... .. .")
-		}
 		wg.Done()
 	}()
 
@@ -263,22 +240,14 @@ func tcpDispatchHash(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16)
 	return sum.Sum32()
 }
 
-func tcpProcessService(
-	tcpDispatchChannel chan *layers.Packet,
-	tcpAssemblyChannels []chan *layers.Packet, wg *sync.WaitGroup) {
+func tcpProcessService(tcpDispatchChannel chan *layers.Packet, tcpAssemblyChannels []chan *layers.Packet, wg *sync.WaitGroup) {
 	defer func() {
-		err := recover()
-		if err != nil {
-			log.Errorf("TcpProcessService run with error: %s.", err)
-			runState.stop()
-		} else {
-			log.Info("TcpProcessService exit normally... .. .")
-		}
 		wg.Done()
 	}()
 
 	var srcIP, dstIP net.IP
 	timer := time.NewTimer(time.Second)
+	tcpDispatchChannelNum := uint32(len(tcpAssemblyChannels))
 
 	for !runState.stopped() {
 		timer.Reset(time.Second)
@@ -307,7 +276,7 @@ func tcpProcessService(
 
 			tcp := packet.TransportDecoder.(*layers.TCP)
 			hash := tcpDispatchHash(srcIP, tcp.SrcPort, dstIP, tcp.DstPort)
-			tcpAssemblyChannels[hash%uint32(runtime.NumCPU())] <- packet
+			tcpAssemblyChannels[hash%tcpDispatchChannelNum] <- packet
 
 		case <-timer.C:
 			break
@@ -315,17 +284,10 @@ func tcpProcessService(
 	}
 }
 
-func tcpAssemblyService(index int, tcpAssemblyChannel chan *layers.Packet, wg *sync.WaitGroup) {
+func tcpAssemblyService(index int, tcpAssemblyChannel chan *layers.Packet, sessionBreakdownDumpChannel chan interface{}, wg *sync.WaitGroup) {
 	assembler := tcpassembly.NewAssembler()
 
 	defer func() {
-		// err := recover()
-		// if err != nil {
-		// 	log.Errorf("TcpAssemblyService run with error: %s.", err)
-		// 	runState.stop()
-		// } else {
-		// 	log.Info("TcpAssemblyService exit normally... .. .")
-		// }
 		log.Infof("tcpAssemblyService: %d got %d tcp streams.", index, assembler.Count)
 		wg.Done()
 	}()
@@ -336,6 +298,30 @@ func tcpAssemblyService(index int, tcpAssemblyChannel chan *layers.Packet, wg *s
 		select {
 		case packet := <-tcpAssemblyChannel:
 			assembler.Assemble(packet.NetworkDecoder, packet.TransportDecoder, packet.Time)
+			for i := 0; i < len(assembler.SessionBreakdowns); i++ {
+				sessionBreakdownDumpChannel <- assembler.SessionBreakdowns[i]
+			}
+			assembler.SessionBreakdowns = assembler.SessionBreakdowns[len(assembler.SessionBreakdowns):]
+
+		case <-timer.C:
+			break
+		}
+	}
+}
+
+func sessionBreakdownDumpService(sessionBreakdownDumpChannel chan interface{}, wg *sync.WaitGroup) {
+	defer func() {
+		wg.Done()
+	}()
+
+	timer := time.NewTimer(time.Second)
+	for !runState.stopped() {
+		timer.Reset(time.Second)
+		select {
+		case sessionBreakdown := <-sessionBreakdownDumpChannel:
+			if sessionBreakdownBuf, err := json.Marshal(sessionBreakdown); err == nil {
+				fmt.Println(string(sessionBreakdownBuf))
+			}
 
 		case <-timer.C:
 			break
@@ -352,7 +338,10 @@ func main() {
 	}
 	defer out.Close()
 
-	log.Debugf("Run with %d cpus.", runtime.NumCPU())
+	// cpuNum := runtime.NumCPU()
+	cpuNum := 1
+
+	log.Infof("Run with GOMAXPROCS=%d.", 2*cpuNum+1)
 	runtime.GOMAXPROCS(2*runtime.NumCPU() + 1)
 
 	ipDispatchChannel := make(chan *layers.Packet, 100000)
@@ -364,21 +353,26 @@ func main() {
 	tcpDispatchChannel := make(chan *layers.Packet, 100000)
 	defer close(tcpDispatchChannel)
 
-	tcpAssemblyChannels := make([]chan *layers.Packet, runtime.NumCPU())
-	for i := 0; i < runtime.NumCPU(); i++ {
+	tcpAssemblyChannels := make([]chan *layers.Packet, cpuNum)
+	for i := 0; i < cpuNum; i++ {
 		tcpAssemblyChannels[i] = make(chan *layers.Packet, 100000)
 		defer close(tcpAssemblyChannels[i])
 	}
 
+	sessionBreakdownDumpChannel := make(chan interface{}, 100000)
+	defer close(sessionBreakdownDumpChannel)
+
 	var wg sync.WaitGroup
-	wg.Add(4 + runtime.NumCPU())
+	wg.Add(5 + cpuNum)
+
 	go datalinkCaptureService(netDev, ipDispatchChannel, &wg)
 	go ipProcessService(ipDispatchChannel, icmpDispatchChannel, tcpDispatchChannel, &wg)
 	go icmpProcessService(icmpDispatchChannel, &wg)
 	go tcpProcessService(tcpDispatchChannel, tcpAssemblyChannels, &wg)
-	for i := 0; i < runtime.NumCPU(); i++ {
-		go tcpAssemblyService(i, tcpAssemblyChannels[i], &wg)
+	for i := 0; i < cpuNum; i++ {
+		go tcpAssemblyService(i, tcpAssemblyChannels[i], sessionBreakdownDumpChannel, &wg)
 	}
+	go sessionBreakdownDumpService(sessionBreakdownDumpChannel, &wg)
 
 	wg.Wait()
 }

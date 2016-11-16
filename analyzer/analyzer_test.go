@@ -1,7 +1,7 @@
 package analyzer
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/analyzer/dumy"
+	"github.com/zhengyuli/ntrace/analyzer/dumy"
 	"testing"
 )
 

@@ -8,7 +8,14 @@ all: build
 .PHONY: build
 build:
 	@echo "Building nTrace... .. ."
-	@go build -o ntrace bitbucket.org/zhengyuli/ntrace
+	@make -C analyzer/http/http_parser/
+	@go build -v -o ntrace github.com/zhengyuli/ntrace
+
+.PHONY: debug
+debug:
+	@echo "Building nTrace debug version... .. ."
+	@make -C analyzer/http/http_parser/
+	@go build -gcflags '-N -l' -v -o ntrace github.com/zhengyuli/ntrace
 
 clean:
 	@rm -rf ntrace

@@ -56,17 +56,9 @@ func (tcp *TCP) Decode(data []byte) error {
 	// TCP options
 	data = data[20 : tcp.DataOffset*4]
 	for len(data) > 0 {
-		if tcp.Options == nil {
-			tcp.Options = make([]TCPOption, 0, 4)
-		}
 		opt := TCPOption{OptionType: uint8(data[0])}
 		switch opt.OptionType {
-		case 0: // End of options
-			opt.OptionLength = 1
-			tcp.Options = append(tcp.Options, opt)
-			break
-
-		case 1: // 1 byte padding
+		case 0, 1: // End of options or padding
 			opt.OptionLength = 1
 
 		default:
@@ -80,7 +72,9 @@ func (tcp *TCP) Decode(data []byte) error {
 				"TCP option length exceeds remaining TCP header size, option type %d length %d",
 				opt.OptionType, opt.OptionLength)
 		}
-		tcp.Options = append(tcp.Options, opt)
+		if opt.OptionType != 0 && opt.OptionType != 1 {
+			tcp.Options = append(tcp.Options, opt)
+		}
 	}
 
 	return nil
@@ -116,4 +110,14 @@ func (tcp TCP) String() string {
 	desc += fmt.Sprintf("options=%v", tcp.Options)
 
 	return desc
+}
+
+func (tcp TCP) GetMSSOption() uint {
+	for i := 0; i < len(tcp.Options); i++ {
+		if tcp.Options[i].OptionType == 2 {
+			return uint(binary.BigEndian.Uint16(tcp.Options[i].OptionData))
+		}
+	}
+
+	return 0
 }

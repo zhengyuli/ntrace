@@ -1,8 +1,8 @@
 package ip4defrag
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/layers"
 	"bytes"
+	"github.com/zhengyuli/ntrace/layers"
 	"net"
 	"testing"
 )

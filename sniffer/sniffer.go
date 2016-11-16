@@ -1,9 +1,9 @@
 package sniffer
 
 import (
-	"bitbucket.org/zhengyuli/ntrace/layers"
-	"bitbucket.org/zhengyuli/ntrace/sniffer/driver"
-	"bitbucket.org/zhengyuli/ntrace/sniffer/driver/pcap"
+	"github.com/zhengyuli/ntrace/layers"
+	"github.com/zhengyuli/ntrace/sniffer/driver"
+	"github.com/zhengyuli/ntrace/sniffer/driver/pcap"
 )
 
 // Sniffer network sniffer
