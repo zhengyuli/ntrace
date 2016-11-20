@@ -189,7 +189,7 @@ type Stream struct {
 	ClosingStreamsListElement *list.Element
 }
 
-func (s *Stream) ResetDataExhangingInfo() {
+func (s *Stream) ResetDataExchangingInfo() {
 	s.Client2ServerBytes = 0
 	s.Server2ClientBytes = 0
 	s.Client2ServerPackets = 0
@@ -228,7 +228,7 @@ func (s *Stream) Session2Breakdown(appSessionBreakdown interface{}) *SessionBrea
 	sb.ServerZeroWindows = s.ServerZeroWindows
 	sb.ApplicationSessionBreakdown = appSessionBreakdown
 	// Reset data exchanging info for next application session breakdown
-	s.ResetDataExhangingInfo()
+	s.ResetDataExchangingInfo()
 
 	return sb
 }
@@ -236,7 +236,7 @@ func (s *Stream) Session2Breakdown(appSessionBreakdown interface{}) *SessionBrea
 type SessionBreakdown struct {
 	Proto                             string      `json:"proto"`
 	Addr                              string      `json:"address"`
-	MSS                               uint        `json:tcp_mss,omitempty`
+	MSS                               uint        `json:"tcp_mss,omitempty"`
 	Client2ServerBytes                uint        `json:"tcp_c2s_bytes"`
 	Server2ClientBytes                uint        `json:"tcp_s2c_bytes"`
 	Client2ServerPackets              uint        `json:"tcp_c2s_packets"`
@@ -489,7 +489,7 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 		HandshakeSyncRetryTime: timestamp,
 	}
 	stream.MSS = tcp.GetMSSOption()
-	stream.ResetDataExhangingInfo()
+	stream.ResetDataExchangingInfo()
 
 	if proto, err := appservice.GetProto(dstIP.String(), tcp.DstPort); err == nil {
 		stream.Analyzer = analyzer.GetAnalyzer(proto)

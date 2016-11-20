@@ -1244,7 +1244,7 @@ func TestDefragPing1(t *testing.T) {
 	validPayload = append(validPayload, testPing1Frag4[34:]...)
 
 	if bytes.Compare(validPayload, ip.Payload) != 0 {
-		t.Errorf("IPv4 defrag: payload is not correctly defragmented.")
+		t.Error("IPv4 defrag: payload is not correctly defragmented.")
 	}
 
 	if len(defrag.ipFlows) != 0 {
@@ -1275,7 +1275,7 @@ func TestDefragPing1and2(t *testing.T) {
 	validPayload = append(validPayload, testPing1Frag4[34:]...)
 
 	if bytes.Compare(validPayload, ip.Payload) != 0 {
-		t.Errorf("IPv4 defrag: payload Ping1 is not correctly defragmented.")
+		t.Error("IPv4 defrag: payload Ping1 is not correctly defragmented.")
 	}
 
 	ip = genTestDefrag(t, defrag, testPing2Frag2, true, "Ping2Frag2")
@@ -1289,7 +1289,7 @@ func TestDefragPing1and2(t *testing.T) {
 	validPayload2 = append(validPayload2, testPing2Frag4[34:]...)
 
 	if bytes.Compare(validPayload2, ip.Payload) != 0 {
-		t.Errorf("IPv4 defrag: payload Ping2 is not correctly defragmented.")
+		t.Error("IPv4 defrag: payload Ping2 is not correctly defragmented.")
 	}
 
 	if len(defrag.ipFlows) != 0 {
@@ -1325,7 +1325,7 @@ func TestDefragPingTooMuch(t *testing.T) {
 	in, _ := decoder.(*layers.IPv4)
 	_, err = defrag.DefragIPv4(in)
 	if err == nil {
-		t.Fatalf("IPv4 defrag: maximum number of fragments are supposed to be 8.")
+		t.Fatal("IPv4 defrag: maximum number of fragments are supposed to be 8.")
 	}
 
 	if len(defrag.ipFlows) != 0 {
