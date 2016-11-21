@@ -53,34 +53,34 @@ const (
 func (s sessionState) String() string {
 	switch s {
 	case sessionInit:
-		return "HttpSessionInit"
+		return "HTTPSessionInit"
 
 	case requestHeaderBegin:
-		return "HttpRequestHeaderBegin"
+		return "HTTPRequestHeaderBegin"
 
 	case requestHeaderComplete:
-		return "HttpRequestHeaderComplete"
+		return "HTTPRequestHeaderComplete"
 
 	case requestBodyBegin:
-		return "HttpRequestBodyBegin"
+		return "HTTPRequestBodyBegin"
 
 	case requestBodyComplete:
-		return "HttpRequestBodyComplete"
+		return "HTTPRequestBodyComplete"
 
 	case responseHeaderBegin:
-		return "HttpResponseHeaderBegin"
+		return "HTTPResponseHeaderBegin"
 
 	case responseHeaderComplete:
-		return "HttpResponseHeaderComplete"
+		return "HTTPResponseHeaderComplete"
 
 	case responseBodyBegin:
-		return "HttpResponseBodyBegin"
+		return "HTTPResponseBodyBegin"
 
 	case responseBodyComplete:
-		return "HttpResponseBodyComplete"
+		return "HTTPResponseBodyComplete"
 
 	default:
-		return "InvalidHttpSessionState"
+		return "InvalidHTTPSessionState"
 	}
 }
 
@@ -148,20 +148,20 @@ func (s session) session2Breakdown() *SessionBreakdown {
 }
 
 type SessionBreakdown struct {
-	SessionState    string            `json:"session_state"`
-	ReqVer          string            `json:"request_version"`
-	ReqMethod       string            `json:"request_method"`
-	ReqURI          string            `json:"request_uri"`
-	ReqHeaders      map[string]string `json:"request_headers"`
-	ReqHeaderSize   uint              `json:"request_header_size"`
-	ReqBodySize     uint              `json:"request_body_size"`
-	RespVer         string            `json:"response_version"`
-	RespHeaders     map[string]string `json:"response_headers"`
-	StatusCode      uint16            `json:"response_status_code"`
-	RespHeaderSize  uint              `json:"response_header_size"`
-	RespBodySize    uint              `json:"response_body_size"`
-	ServerLatency   uint              `json:"server_latency"`
-	DownloadLatency uint              `json:"download_latency"`
+	SessionState    string            `json:"http_session_state"`
+	ReqVer          string            `json:"http_request_version"`
+	ReqMethod       string            `json:"http_request_method"`
+	ReqURI          string            `json:"http_request_uri"`
+	ReqHeaders      map[string]string `json:"http_request_headers"`
+	ReqHeaderSize   uint              `json:"http_request_header_size"`
+	ReqBodySize     uint              `json:"http_request_body_size"`
+	RespVer         string            `json:"http_response_version"`
+	RespHeaders     map[string]string `json:"http_response_headers"`
+	StatusCode      uint16            `json:"http_response_status_code"`
+	RespHeaderSize  uint              `json:"http_response_header_size"`
+	RespBodySize    uint              `json:"http_response_body_size"`
+	ServerLatency   uint              `json:"http_server_latency"`
+	DownloadLatency uint              `json:"http_download_latency"`
 }
 
 //export onReqMessageBegin
@@ -413,7 +413,7 @@ func (a *Analyzer) Proto() (protoName string) {
 }
 
 func (a *Analyzer) HandleEstb(timestamp time.Time) {
-	log.Debug("Http Analyzer: HandleEstb.")
+	log.Debug("HTTP Analyzer: HandleEstb.")
 }
 
 func (a *Analyzer) HandleData(payload []byte, fromClient bool, timestamp time.Time) (parseBytes int, sessionBreakdown interface{}) {
@@ -448,9 +448,9 @@ func (a *Analyzer) HandleData(payload []byte, fromClient bool, timestamp time.Ti
 
 func (a *Analyzer) HandleReset(fromClient bool, timestamp time.Time) (sessionBreakdown interface{}) {
 	if fromClient {
-		log.Debug("Http Analyzer: HandleReset from client.")
+		log.Debug("HTTP Analyzer: HandleReset from client.")
 	} else {
-		log.Debug("Http Analyzer: HandleReset from server.")
+		log.Debug("HTTP Analyzer: HandleReset from server.")
 	}
 
 	if front := a.sessions.Front(); front != nil {
@@ -471,9 +471,9 @@ func (a *Analyzer) HandleReset(fromClient bool, timestamp time.Time) (sessionBre
 
 func (a *Analyzer) HandleFin(fromClient bool, timestamp time.Time) (sessionBreakdown interface{}) {
 	if fromClient {
-		log.Debug("Http Analyzer: HandleFin from client.")
+		log.Debug("HTTP Analyzer: HandleFin from client.")
 	} else {
-		log.Debug("Http Analyzer: HandleFin from server.")
+		log.Debug("HTTP Analyzer: HandleFin from server.")
 	}
 
 	if front := a.sessions.Front(); front != nil && !fromClient {

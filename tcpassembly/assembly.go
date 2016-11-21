@@ -227,8 +227,8 @@ type Stream struct {
 	ClosingStreamsListElement *list.Element
 }
 
-// ResetDataExhangingInfo reset TCP stream data exchanging info.
-func (s *Stream) ResetDataExhangingInfo() {
+// ResetDataExchangingInfo reset TCP stream data exchanging info.
+func (s *Stream) ResetDataExchangingInfo() {
 	s.Client2ServerBytes = 0
 	s.Server2ClientBytes = 0
 	s.Client2ServerPackets = 0
@@ -252,6 +252,7 @@ func (s *Stream) Session2Breakdown(appSessionBreakdown interface{}) *SessionBrea
 	sb.Proto = s.Analyzer.Proto()
 	sb.Addr = s.Addr.String()
 
+	// Dump TCP stream connection info
 	if s.DumpConnInfo {
 		s.DumpConnInfo = false
 		connInfoBreakdown := new(ConnInfoBreakdown)
@@ -267,6 +268,7 @@ func (s *Stream) Session2Breakdown(appSessionBreakdown interface{}) *SessionBrea
 		sb.ConnInfoBreakdown = connInfoBreakdown
 	}
 
+	// Dump TCP stream data exchanging info
 	sb.Client2ServerBytes = s.Client2ServerBytes
 	sb.Server2ClientBytes = s.Server2ClientBytes
 	sb.Client2ServerPackets = s.Client2ServerPackets
@@ -282,18 +284,20 @@ func (s *Stream) Session2Breakdown(appSessionBreakdown interface{}) *SessionBrea
 	sb.ClientZeroWindows = s.ClientZeroWindows
 	sb.ServerZeroWindows = s.ServerZeroWindows
 	sb.ApplicationSessionBreakdown = appSessionBreakdown
+
 	// Reset data exchanging info for next application session breakdown
-	s.ResetDataExhangingInfo()
+	s.ResetDataExchangingInfo()
 
 	return sb
 }
 
+// ConnInfoBreakdown TCP stream connection info breakdown.
 type ConnInfoBreakdown struct {
 	HandshakeSyncRetryLatency uint `json:"tcp_conn_sync_retries_latency"`
 	HandshakeEstabLatency     uint `json:"tcp_conn_establishment_latency"`
 	HandshakeSyncRetries      uint `json:"tcp_conn_sync_retries"`
 	HandshakeSyncAckRetries   uint `json:"tcp_conn_sync_ack_retries"`
-	MSS                       uint `json:tcp_mss`
+	MSS                       uint `json:"tcp_mss"`
 }
 
 // SessionBreakdown TCP stream session breakdown.
@@ -385,8 +389,8 @@ func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream,
 				log.Debugf("TCP assembly: detect recognizable appService=%s:%d-%s.", stream.Addr.DstIP, stream.Addr.DstPort, proto)
 				appservice.Add(proto, stream.Addr.DstIP, stream.Addr.DstPort)
 			} else {
-				log.Debugf("TCP assembly: detect unrecognizable appService=%s:%d.", stream.Addr.DstIP, stream.Addr.DstPort)
-				appservice.AddIgnored(stream.Addr.DstIP, stream.Addr.DstPort)
+				log.Debugf("TCP assembly: detect unrecognizable appService=%s:%d, will use default analyzer.", stream.Addr.DstIP, stream.Addr.DstPort)
+				appservice.Add(analyzer.DefaultAnalyzer, stream.Addr.DstIP, stream.Addr.DstPort)
 			}
 			a.removeStream(stream)
 		}
@@ -534,10 +538,6 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 		return
 	}
 
-	if appservice.IsIgnored(dstIP.String(), tcp.DstPort) {
-		return
-	}
-
 	addr := Tuple4{
 		SrcIP:   srcIP.String(),
 		SrcPort: tcp.SrcPort,
@@ -563,7 +563,7 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 	}
 	stream.DumpConnInfo = true
 	stream.MSS = tcp.GetMSSOption()
-	stream.ResetDataExhangingInfo()
+	stream.ResetDataExchangingInfo()
 
 	if proto, err := appservice.GetProto(dstIP.String(), tcp.DstPort); err == nil {
 		stream.Analyzer = analyzer.GetAnalyzer(proto)
