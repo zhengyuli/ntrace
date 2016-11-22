@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// VLAN packet layer for 802.1Q VLAN.
+// VLAN 802.1Q VLAN frame.
 type VLAN struct {
 	Base
 	Priority     uint8
@@ -14,6 +14,7 @@ type VLAN struct {
 	EthernetType EthernetType
 }
 
+// Decode decode VLAN frame.
 func (v *VLAN) Decode(data []byte) error {
 	if len(data) < 4 {
 		return fmt.Errorf("invalid (too small) VLAN capture length (%d < 4)", len(data))
@@ -29,10 +30,12 @@ func (v *VLAN) Decode(data []byte) error {
 	return nil
 }
 
+// NextLayerType get VLAN next layer type.
 func (v *VLAN) NextLayerType() LayerType {
 	return v.EthernetType
 }
 
+// NextLayerDecoder get VLAN next layer Decoder.
 func (v *VLAN) NextLayerDecoder() Decoder {
 	switch v.EthernetType {
 	case EthernetTypeIPv4:

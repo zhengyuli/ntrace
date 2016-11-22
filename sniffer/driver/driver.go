@@ -4,14 +4,14 @@ import (
 	"time"
 )
 
-// Stats driver stats.
+// Stats driver stats info.
 type Stats struct {
 	PktsRecvd     uint
 	PktsDropped   uint
 	PktsIfDropped uint
 }
 
-// Packet network packet info
+// Packet captured network packet.
 type Packet struct {
 	Time   time.Time
 	CapLen uint

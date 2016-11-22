@@ -356,7 +356,7 @@ func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream,
 
 	log.Debugf("TCP assembly: TCP connection %s get %d bytes data %s.", stream.Addr, len(rcv.RecvData), direction)
 
-	var parseBytes int
+	var parseBytes uint
 	if stream.Analyzer != nil {
 		var appSessionBreakdown interface{}
 
@@ -397,7 +397,7 @@ func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream,
 	}
 }
 
-// handleReset TCP stream connection rest packet handler
+// handleReset TCP stream connection rest packet handler.
 func (a *Assembler) handleReset(stream *Stream, snd *HalfStream, rcv *HalfStream, timestamp time.Time) {
 	var direction Direction
 	if snd == &stream.Client {

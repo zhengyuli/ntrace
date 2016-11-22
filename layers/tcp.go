@@ -5,12 +5,14 @@ import (
 	"fmt"
 )
 
+// TCPOption TCP option.
 type TCPOption struct {
 	OptionType   uint8
 	OptionLength uint8
 	OptionData   []byte
 }
 
+// TCP TCP frame.
 type TCP struct {
 	Base
 	SrcPort, DstPort                           uint16
@@ -24,6 +26,7 @@ type TCP struct {
 	Options                                    []TCPOption
 }
 
+// Decode decode TCP frame.
 func (tcp *TCP) Decode(data []byte) error {
 	tcp.SrcPort = binary.BigEndian.Uint16(data[0:2])
 	tcp.DstPort = binary.BigEndian.Uint16(data[2:4])
@@ -80,10 +83,12 @@ func (tcp *TCP) Decode(data []byte) error {
 	return nil
 }
 
+// NextLayerType get TCP next layer type, always return nil.
 func (tcp *TCP) NextLayerType() LayerType {
 	return nil
 }
 
+// NextLayerDecoder get TCP next layer decoder, always return nil.
 func (tcp *TCP) NextLayerDecoder() Decoder {
 	return nil
 }
@@ -112,6 +117,7 @@ func (tcp TCP) String() string {
 	return desc
 }
 
+// GetMSSOption get TCP MSS option.
 func (tcp TCP) GetMSSOption() uint {
 	for i := 0; i < len(tcp.Options); i++ {
 		if tcp.Options[i].OptionType == 2 {

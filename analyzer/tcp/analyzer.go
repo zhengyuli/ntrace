@@ -6,6 +6,7 @@ import (
 )
 
 const (
+	// ProtoName TCP analyzer proto name.
 	ProtoName = "TCP"
 )
 
@@ -34,11 +35,11 @@ func (s sessionState) String() string {
 }
 
 type session struct {
-	resetFlag        bool
-	State            sessionState
-	DataExchangeSize uint
-	SessionBeginTime time.Time
-	SessionEndTime   time.Time
+	resetFlag         bool
+	State             sessionState
+	DataExchangeBytes uint
+	BeginTime         time.Time
+	CompleteTime      time.Time
 }
 
 func (s session) session2Breakdown() *SessionBreakdown {
@@ -49,39 +50,45 @@ func (s session) session2Breakdown() *SessionBreakdown {
 	} else {
 		sb.SessionState = s.State.String()
 	}
-	sb.DataExchangeSize = s.DataExchangeSize
-	if s.SessionEndTime.After(s.SessionBeginTime) {
-		sb.SessionLatency = uint(s.SessionEndTime.Sub(s.SessionBeginTime).Nanoseconds() / 1000000)
+	sb.DataExchangeBytes = s.DataExchangeBytes
+	if s.CompleteTime.After(s.BeginTime) {
+		sb.SessionLatency = uint(s.CompleteTime.Sub(s.BeginTime).Nanoseconds() / 1000000)
 	}
 
 	return sb
 }
 
+// SessionBreakdown TCP analyzer session breakdown.
 type SessionBreakdown struct {
-	SessionState     string `json:"tcp_session_state"`
-	DataExchangeSize uint   `json:"tcp_data_exchange_size"`
-	SessionLatency   uint   `json:"tcp_session_latency"`
+	SessionState      string `json:"tcp_session_state"`
+	DataExchangeBytes uint   `json:"tcp_data_exchange_bytes"`
+	SessionLatency    uint   `json:"tcp_session_latency"`
 }
 
+// Analyzer TCP analyzer.
 type Analyzer struct {
 	session session
 }
 
+// Init TCP analyzer init function.
 func (a *Analyzer) Init() {
 	log.Debug("TCP Analyzer: init.")
 }
 
+// Proto TCP analyzer get proto name function.
 func (a *Analyzer) Proto() (protoName string) {
 	return ProtoName
 }
 
+// HandleEstb TCP analyzer handle TCP connection establishment function.
 func (a *Analyzer) HandleEstb(timestamp time.Time) {
 	log.Debug("TCP Analyzer: HandleEstb.")
 
-	a.session.SessionBeginTime = timestamp
+	a.session.BeginTime = timestamp
 }
 
-func (a *Analyzer) HandleData(payload []byte, fromClient bool, timestamp time.Time) (parseBytes int, sessionBreakdown interface{}) {
+// HandleData TCP analyzer handle TCP connection payload function.
+func (a *Analyzer) HandleData(payload []byte, fromClient bool, timestamp time.Time) (parseBytes uint, sessionBreakdown interface{}) {
 	if fromClient {
 		log.Debugf("TCP Analyzer: receive %d bytes data from client.", len(payload))
 	} else {
@@ -89,11 +96,12 @@ func (a *Analyzer) HandleData(payload []byte, fromClient bool, timestamp time.Ti
 	}
 
 	a.session.State = sessionDataExchanging
-	a.session.DataExchangeSize += uint(len(payload))
+	a.session.DataExchangeBytes += uint(len(payload))
 
-	return len(payload), nil
+	return uint(len(payload)), nil
 }
 
+// HandleReset TCP analyzer handle TCP connection reset function.
 func (a *Analyzer) HandleReset(fromClient bool, timestamp time.Time) (sessionBreakdown interface{}) {
 	if fromClient {
 		log.Debug("TCP Analyzer: HandleReset from client.")
@@ -103,11 +111,12 @@ func (a *Analyzer) HandleReset(fromClient bool, timestamp time.Time) (sessionBre
 
 	a.session.resetFlag = true
 	a.session.State = sessionComplete
-	a.session.SessionEndTime = timestamp
+	a.session.CompleteTime = timestamp
 
 	return a.session.session2Breakdown()
 }
 
+// HandleFin TCP analyzer handle TCP connection fin function.
 func (a *Analyzer) HandleFin(fromClient bool, timestamp time.Time) (sessionBreakdown interface{}) {
 	if fromClient {
 		log.Debug("TCP Analyzer: HandleFin from client.")
@@ -115,10 +124,10 @@ func (a *Analyzer) HandleFin(fromClient bool, timestamp time.Time) (sessionBreak
 		log.Debug("TCP Analyzer: HandleFin from server.")
 	}
 
-	oldSessionEndTime := a.session.SessionEndTime
-	a.session.SessionEndTime = timestamp
+	oldCompleteTime := a.session.CompleteTime
+	a.session.CompleteTime = timestamp
 
-	if oldSessionEndTime.After(a.session.SessionBeginTime) {
+	if oldCompleteTime.After(a.session.BeginTime) {
 		a.session.State = sessionComplete
 		return a.session.session2Breakdown()
 	}
@@ -126,6 +135,7 @@ func (a *Analyzer) HandleFin(fromClient bool, timestamp time.Time) (sessionBreak
 	return nil
 }
 
+// DetectProto TCP proto detect function, always return empty.
 func DetectProto(payload []byte, fromClient bool, timestamp time.Time) (proto string) {
 	return ""
 }

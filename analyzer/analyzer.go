@@ -7,19 +7,24 @@ import (
 )
 
 const (
+	// DefaultAnalyzer default analyzer for unrecognizable proto.
 	DefaultAnalyzer = tcp.ProtoName
 )
 
+// Analyzer interface of TCP application layer protocol analyzer.
 type Analyzer interface {
 	Init()
 	Proto() (protoName string)
 	HandleEstb(timestamp time.Time)
-	HandleData(payload []byte, fromClient bool, timestamp time.Time) (parseBytes int, sessionBreakdown interface{})
+	HandleData(payload []byte, fromClient bool, timestamp time.Time) (parseBytes uint, sessionBreakdown interface{})
 	HandleReset(fromClient bool, timestamp time.Time) (sessionBreakdown interface{})
 	HandleFin(fromClient bool, timestamp time.Time) (sessionBreakdown interface{})
 }
 
+// NewAnalyzerFunc create new analyzer function.
 type NewAnalyzerFunc func() Analyzer
+
+// DetectProtoFunc proto detect function.
 type DetectProtoFunc func(payload []byte, fromClient bool, timestamp time.Time) (proto string)
 
 var newAnalyzerFuncs map[string]NewAnalyzerFunc
@@ -48,6 +53,7 @@ func init() {
 	detectProtoFuncs = append(detectProtoFuncs, tcp.DetectProto)
 }
 
+// GetAnalyzer get a new analyzer by proto name.
 func GetAnalyzer(proto string) Analyzer {
 	if newAnalyzerFunc := newAnalyzerFuncs[proto]; newAnalyzerFunc != nil {
 		return newAnalyzerFunc()
@@ -56,12 +62,13 @@ func GetAnalyzer(proto string) Analyzer {
 	return nil
 }
 
-func DetectProto(payload []byte, fromClient bool, timestamp time.Time) (parseBytes int, proto string) {
+// DetectProto loop all registered proto detect functions to find the proper analyzer.
+func DetectProto(payload []byte, fromClient bool, timestamp time.Time) (parseBytes uint, proto string) {
 	for i := 0; i < len(detectProtoFuncs); i++ {
 		if proto := detectProtoFuncs[i](payload, fromClient, timestamp); proto != "" {
-			return len(payload), proto
+			return uint(len(payload)), proto
 		}
 	}
 
-	return len(payload), ""
+	return uint(len(payload)), ""
 }

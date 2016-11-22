@@ -6,13 +6,17 @@ import (
 	"net"
 )
 
+// IPv4Protocol IPv4 protocol type.
 type IPv4Protocol uint8
 
 const (
+	// IPv4ProtocolICMP IPv4 protocol ICMP.
 	IPv4ProtocolICMP IPv4Protocol = 0x01
-	IPv4ProtocolTCP  IPv4Protocol = 0x06
+	// IPv4ProtocolTCP IPv4 protocol TCP.
+	IPv4ProtocolTCP IPv4Protocol = 0x06
 )
 
+// Name get IPv4 protocol name.
 func (p IPv4Protocol) Name() string {
 	switch p {
 	case IPv4ProtocolICMP:
@@ -26,12 +30,14 @@ func (p IPv4Protocol) Name() string {
 	}
 }
 
+// IPv4Option IPv4 option.
 type IPv4Option struct {
 	OptionType   uint8
 	OptionLength uint8
 	OptionData   []byte
 }
 
+// IPv4 IPv4 frame.
 type IPv4 struct {
 	Base
 	Version    uint8
@@ -49,14 +55,17 @@ type IPv4 struct {
 	Options    []IPv4Option
 }
 
+// GetSrcIP get IPv4 source IP.
 func (ip *IPv4) GetSrcIP() string {
 	return ip.SrcIP.String()
 }
 
+// GetDstIP get IPv4 dest IP.
 func (ip *IPv4) GetDstIP() string {
 	return ip.DstIP.String()
 }
 
+// Decode decode IPv4 frame.
 func (ip *IPv4) Decode(data []byte) error {
 	ip.Version = uint8(data[0]) >> 4
 	ip.IHL = uint8(data[0]) & 0x0F
@@ -119,10 +128,12 @@ func (ip *IPv4) Decode(data []byte) error {
 	return nil
 }
 
+// NextLayerType get IPv4 next layer type.
 func (ip *IPv4) NextLayerType() LayerType {
 	return ip.Protocol
 }
 
+// NextLayerDecoder get IPv4 next layer decoder.
 func (ip *IPv4) NextLayerDecoder() Decoder {
 	switch ip.Protocol {
 	case IPv4ProtocolICMP:

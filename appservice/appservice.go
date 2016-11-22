@@ -18,6 +18,7 @@ func init() {
 	appServices = make(map[string]*appService)
 }
 
+// Add add TCP application layer service info.
 func Add(proto string, ip string, port uint16) {
 	appServicesLock.Lock()
 	defer appServicesLock.Unlock()
@@ -30,6 +31,7 @@ func Add(proto string, ip string, port uint16) {
 	}
 }
 
+// GetProto get TCP application layer service proto name by ip and port.
 func GetProto(ip string, port uint16) (proto string, err error) {
 	appServicesLock.RLock()
 	defer appServicesLock.RUnlock()

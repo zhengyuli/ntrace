@@ -4,14 +4,19 @@ import (
 	"fmt"
 )
 
+// DatalinkType network data link layer type.
 type DatalinkType int
 
 const (
-	DatalinkTypeNull     DatalinkType = 0x0000
+	// DatalinkTypeNull data link layer Null
+	DatalinkTypeNull DatalinkType = 0x0000
+	// DatalinkTypeEthernet data link layer Ethernet
 	DatalinkTypeEthernet DatalinkType = 0x0001
-	DatalinkTypeLoop     DatalinkType = 0x006C
+	// DatalinkTypeLoop data link layer Loop
+	DatalinkTypeLoop DatalinkType = 0x006C
 )
 
+// Name get data link layer type name.
 func (dt DatalinkType) Name() string {
 	switch dt {
 	case DatalinkTypeNull,
@@ -26,6 +31,7 @@ func (dt DatalinkType) Name() string {
 	}
 }
 
+// NewDecoder get a new data link layer decoder by data link type.
 func (dt DatalinkType) NewDecoder() Decoder {
 	switch dt {
 	case DatalinkTypeNull,

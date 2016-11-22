@@ -187,22 +187,22 @@ func (a *TestAnalyzer) HandleEstb(timestamp time.Time) {
 	return
 }
 
-func (a *TestAnalyzer) HandleData(payload *[]byte, fromClient bool, timestamp time.Time) (sessionDone bool) {
+func (a *TestAnalyzer) HandleData(payload []byte, fromClient bool, timestamp time.Time) (parseBytes uint, sessionBreakdown interface{}) {
 	if fromClient {
-		a.RecvDataFromClient = append(a.RecvDataFromClient, (*payload)[:]...)
+		a.RecvDataFromClient = append(a.RecvDataFromClient, (payload)[:]...)
 	} else {
-		a.RecvDataFromServer = append(a.RecvDataFromServer, (*payload)[:]...)
+		a.RecvDataFromServer = append(a.RecvDataFromServer, (payload)[:]...)
 	}
-	*payload = (*payload)[len(*payload):]
-	return false
+
+	return uint(len(payload)), nil
 }
 
-func (a *TestAnalyzer) HandleReset(fromClient bool, timestamp time.Time) (sessionDone bool) {
-	return false
+func (a *TestAnalyzer) HandleReset(fromClient bool, timestamp time.Time) (sessionBreakdown interface{}) {
+	return nil
 }
 
-func (a *TestAnalyzer) HandleFin(fromClient bool, timestamp time.Time) (sessionDone bool) {
-	return false
+func (a *TestAnalyzer) HandleFin(fromClient bool, timestamp time.Time) (sessionBreakdown interface{}) {
+	return nil
 }
 
 func TestAssembly(t *testing.T) {

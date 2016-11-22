@@ -4,6 +4,7 @@ import (
 	"time"
 )
 
+// Decoder interface of network layer decoder.
 type Decoder interface {
 	Decode(data []byte) error
 	LayerContents() []byte
@@ -12,6 +13,7 @@ type Decoder interface {
 	NextLayerDecoder() Decoder
 }
 
+// Packet network packet.
 type Packet struct {
 	Time             time.Time
 	DatalinkDecoder  Decoder

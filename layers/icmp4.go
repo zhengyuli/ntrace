@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+// ICMPv4 ICMPv4 frame.
 type ICMPv4 struct {
 	Base
 	Type     uint8
@@ -12,6 +13,7 @@ type ICMPv4 struct {
 	Checksum uint16
 }
 
+// Decode decode ICMPv4 frame.
 func (icmp *ICMPv4) Decode(data []byte) error {
 	if len(data) < 8 {
 		return fmt.Errorf("invalid (too small) ICMPv4 capture length (%d < 8)", len(data))
@@ -26,10 +28,12 @@ func (icmp *ICMPv4) Decode(data []byte) error {
 	return nil
 }
 
+// NextLayerType get ICMPv4 next layer type, always return nil.
 func (icmp *ICMPv4) NextLayerType() LayerType {
 	return nil
 }
 
+// NextLayerDecoder get ICMPv4 next layer decoder, always return nil.
 func (icmp *ICMPv4) NextLayerDecoder() Decoder {
 	return nil
 }

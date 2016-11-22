@@ -1,5 +1,6 @@
 package layers
 
+// LayerType interface of network layer type.
 type LayerType interface {
 	Name() string
 }
