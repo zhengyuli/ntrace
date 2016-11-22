@@ -255,6 +255,6 @@ func TestAssembly(t *testing.T) {
 	timestamp = timestamp.Add(time.Millisecond)
 	assembly.Assemble(ipDecoderFromClient, tcpDecoderFinAckFromClient, timestamp)
 	if assembly.StreamsList.Len() != 0 {
-		t.Errorf("Tcp assembly: stream doesn't close.")
+		t.Error("Tcp assembly: stream doesn't close.")
 	}
 }
