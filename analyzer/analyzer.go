@@ -2,7 +2,12 @@ package analyzer
 
 import (
 	"github.com/zhengyuli/ntrace/analyzer/http"
+	"github.com/zhengyuli/ntrace/analyzer/tcp"
 	"time"
+)
+
+const (
+	DefaultAnalyzer = tcp.ProtoName
 )
 
 type Analyzer interface {
@@ -32,6 +37,15 @@ func init() {
 		return a
 	}
 	detectProtoFuncs = append(detectProtoFuncs, http.DetectProto)
+
+	// Register TCP Analyzer
+	newAnalyzerFuncs[tcp.ProtoName] = func() Analyzer {
+		a := new(tcp.Analyzer)
+		a.Init()
+
+		return a
+	}
+	detectProtoFuncs = append(detectProtoFuncs, tcp.DetectProto)
 }
 
 func GetAnalyzer(proto string) Analyzer {
@@ -43,7 +57,7 @@ func GetAnalyzer(proto string) Analyzer {
 }
 
 func DetectProto(payload []byte, fromClient bool, timestamp time.Time) (parseBytes int, proto string) {
-	for i := 0; i < len(newAnalyzerFuncs); i++ {
+	for i := 0; i < len(detectProtoFuncs); i++ {
 		if proto := detectProtoFuncs[i](payload, fromClient, timestamp); proto != "" {
 			return len(payload), proto
 		}

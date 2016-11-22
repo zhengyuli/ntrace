@@ -15,11 +15,17 @@ import (
 	"time"
 )
 
-var TinyTcpPayloadBytes = 32
+// maxTCPStreamsCount max tcp streams count, default is 65536, you can change
+// it by MAX_TCP_STREAMS_COUNT env.
+var maxTCPStreamsCount = 65536
+
+// tinyTCPPayloadBytes tiny TCP payload length, default is 32 bytes, you can
+// change it by TINY_TCP_PAYLOAD_BYTES env.
+var tinyTCPPayloadBytes = 32
 
 func init() {
 	if payloadBytes, err := strconv.Atoi(os.Getenv("TINY_TCP_PAYLOAD_BYTES")); err != nil {
-		TinyTcpPayloadBytes = payloadBytes
+		tinyTCPPayloadBytes = payloadBytes
 	}
 }
 
@@ -33,10 +39,13 @@ func seqDiff(x, y uint32) int {
 	return int(int64(x) - int64(y))
 }
 
+// Direction TCP stream direction.
 type Direction uint8
 
 const (
+	// FromClient TCP stream from client.
 	FromClient Direction = iota
+	// FromServer TCP stream from server.
 	FromServer
 )
 
@@ -48,18 +57,27 @@ func (d Direction) String() string {
 	return "FromServer"
 }
 
-type TcpState uint16
+// TCPState TCP stream state.
+type TCPState uint16
 
 const (
-	TcpSynSent TcpState = iota
-	TcpSynReceived
-	TcpEstablished
-	TcpFinSent
-	TcpFinConfirmed
-	TcpClosing
-	TcpClosed
+	// TCPSynSent TCP three-way handshakes sync packet sent.
+	TCPSynSent TCPState = iota
+	// TCPSynReceived TCP three-way handshakes sync/ack received.
+	TCPSynReceived
+	// TCPEstablished TCP three-way handshakes established.
+	TCPEstablished
+	// TCPFinSent TCP fin packet sent.
+	TCPFinSent
+	// TCPFinConfirmed TCP fin packet is confirmed.
+	TCPFinConfirmed
+	// TCPClosing TCP connection is closing.
+	TCPClosing
+	// TCPClosed TCP connection is closed.
+	TCPClosed
 )
 
+// Tuple4 TCP connection 4-tuple address.
 type Tuple4 struct {
 	SrcIP   string
 	SrcPort uint16
@@ -71,6 +89,7 @@ func (t Tuple4) String() string {
 	return fmt.Sprintf("%s:%d-%s:%d", t.SrcIP, t.SrcPort, t.DstIP, t.DstPort)
 }
 
+// Page used for TCP packet assembly.
 type Page struct {
 	Seq      uint32
 	Ack      uint32
@@ -79,8 +98,9 @@ type Page struct {
 	Payload  []byte
 }
 
+// HalfStream used for describing client/server connection state.
 type HalfStream struct {
-	State              TcpState
+	State              TCPState
 	Seq                uint32
 	Ack                uint32
 	ExpRcvSeq          uint32
@@ -89,20 +109,33 @@ type HalfStream struct {
 	Pages              list.List
 }
 
+// StreamState TCP stream state.
 type StreamState uint16
 
 const (
+	// StreamConnecting TCP stream is connecting.
 	StreamConnecting StreamState = iota
+	// StreamConnected TCP stream is connected
 	StreamConnected
+	// StreamDataExchanging TCP stream is exchanging data.
 	StreamDataExchanging
+	// StreamClosing TCP stream is closing.
 	StreamClosing
+	// StreamClosingTimeout TCP stream is closing with timeout.
 	StreamClosingTimeout
+	// StreamClosed TCP stream is closed.
 	StreamClosed
+	// StreamClosedAbnormally TCP stream is closed abnormally.
 	StreamClosedAbnormally
+	// StreamClosedExceedMaxCount TCP stream is closed because of exceeding max TCP stream count.
 	StreamClosedExceedMaxCount
+	// StreamResetByClientBeforeConn TCP stream is reset by client before connection is established.
 	StreamResetByClientBeforeConn
+	// StreamResetByServerBeforeConn TCP stream is reset by server before connection is established.
 	StreamResetByServerBeforeConn
+	// StreamResetByClientAferConn TCP stream is reset by client after connection is established.
 	StreamResetByClientAferConn
+	// StreamResetByServerAferConn TCP stream is reset by server after connection is established.
 	StreamResetByServerAferConn
 )
 
@@ -149,8 +182,9 @@ func (s StreamState) String() string {
 	}
 }
 
+// Stream TCP stream.
 type Stream struct {
-	// Tcp connection info
+	// TCP connection info
 	Addr                      Tuple4
 	State                     StreamState
 	Client                    HalfStream
@@ -163,8 +197,9 @@ type Stream struct {
 	HandshakeSyncRetries      uint
 	HandshakeSyncAckRetries   uint
 	MSS                       uint
+	DumpConnInfo              bool
 
-	// Tcp data exchanging info
+	// TCP data exchanging info
 	Client2ServerBytes                uint
 	Server2ClientBytes                uint
 	Client2ServerPackets              uint
@@ -180,15 +215,19 @@ type Stream struct {
 	ClientZeroWindows                 uint
 	ServerZeroWindows                 uint
 
-	// Tcp application layer analyzer
+	// TCP application layer analyzer
 	Analyzer analyzer.Analyzer
 
-	// Other
-	StreamsListElement        *list.Element
-	ClosingExpireTime         time.Time
+	// Streams list node
+	StreamsListElement *list.Element
+
+	// Stream closing expire timeout
+	ClosingExpireTime time.Time
+	// Stream closing list node
 	ClosingStreamsListElement *list.Element
 }
 
+// ResetDataExchangingInfo reset TCP stream data exchanging info.
 func (s *Stream) ResetDataExchangingInfo() {
 	s.Client2ServerBytes = 0
 	s.Server2ClientBytes = 0
@@ -206,12 +245,30 @@ func (s *Stream) ResetDataExchangingInfo() {
 	s.ServerZeroWindows = 0
 }
 
+// Session2Breakdown convert TCP stream to session breakdown.
 func (s *Stream) Session2Breakdown(appSessionBreakdown interface{}) *SessionBreakdown {
 	sb := new(SessionBreakdown)
 
 	sb.Proto = s.Analyzer.Proto()
 	sb.Addr = s.Addr.String()
-	sb.MSS = s.MSS
+
+	// Dump TCP stream connection info
+	if s.DumpConnInfo {
+		s.DumpConnInfo = false
+		connInfoBreakdown := new(ConnInfoBreakdown)
+		if s.HandshakeSyncRetryTime.After(s.HandshakeSyncTime) {
+			connInfoBreakdown.HandshakeSyncRetryLatency = uint(s.HandshakeSyncRetryTime.Sub(s.HandshakeSyncTime).Nanoseconds() / 1000000)
+		}
+		if s.HandshakeEstabTime.After(s.HandshakeSyncTime) {
+			connInfoBreakdown.HandshakeEstabLatency = uint(s.HandshakeEstabTime.Sub(s.HandshakeSyncTime).Nanoseconds() / 1000000)
+		}
+		connInfoBreakdown.HandshakeSyncRetries = s.HandshakeSyncRetries
+		connInfoBreakdown.HandshakeSyncAckRetries = s.HandshakeSyncAckRetries
+		connInfoBreakdown.MSS = s.MSS
+		sb.ConnInfoBreakdown = connInfoBreakdown
+	}
+
+	// Dump TCP stream data exchanging info
 	sb.Client2ServerBytes = s.Client2ServerBytes
 	sb.Server2ClientBytes = s.Server2ClientBytes
 	sb.Client2ServerPackets = s.Client2ServerPackets
@@ -227,33 +284,45 @@ func (s *Stream) Session2Breakdown(appSessionBreakdown interface{}) *SessionBrea
 	sb.ClientZeroWindows = s.ClientZeroWindows
 	sb.ServerZeroWindows = s.ServerZeroWindows
 	sb.ApplicationSessionBreakdown = appSessionBreakdown
+
 	// Reset data exchanging info for next application session breakdown
 	s.ResetDataExchangingInfo()
 
 	return sb
 }
 
-type SessionBreakdown struct {
-	Proto                             string      `json:"proto"`
-	Addr                              string      `json:"address"`
-	MSS                               uint        `json:"tcp_mss,omitempty"`
-	Client2ServerBytes                uint        `json:"tcp_c2s_bytes"`
-	Server2ClientBytes                uint        `json:"tcp_s2c_bytes"`
-	Client2ServerPackets              uint        `json:"tcp_c2s_packets"`
-	Server2ClientPackets              uint        `json:"tcp_s2c_packets"`
-	Client2ServerTinyPackets          uint        `json:"tcp_c2s_tiny_packets"`
-	Server2ClientTinyPackets          uint        `json:"tcp_s2c_tiny_packets"`
-	Client2ServerRetransmittedPackets uint        `json:"tcp_c2s_retransmitted_packets"`
-	Server2ClientRetransmittedPackets uint        `json:"tcp_s2c_retransmitted_packets"`
-	Client2ServerOutOfOrderPackets    uint        `json:"tcp_c2s_out_of_order_packets"`
-	Server2ClientOutOfOrderPackets    uint        `json:"tcp_s2c_out_of_order_packets"`
-	Client2ServerDupAcks              uint        `json:"tcp_c2s_duplicate_acks"`
-	Server2ClientDupAcks              uint        `json:"tcp_s2c_duplicate_acks"`
-	ClientZeroWindows                 uint        `json:"tcp_client_zero_windows"`
-	ServerZeroWindows                 uint        `json:"tcp_server_zero_windows"`
-	ApplicationSessionBreakdown       interface{} `json:"application_session_breakdown"`
+// ConnInfoBreakdown TCP stream connection info breakdown.
+type ConnInfoBreakdown struct {
+	HandshakeSyncRetryLatency uint `json:"tcp_conn_sync_retries_latency"`
+	HandshakeEstabLatency     uint `json:"tcp_conn_establishment_latency"`
+	HandshakeSyncRetries      uint `json:"tcp_conn_sync_retries"`
+	HandshakeSyncAckRetries   uint `json:"tcp_conn_sync_ack_retries"`
+	MSS                       uint `json:"tcp_mss"`
 }
 
+// SessionBreakdown TCP stream session breakdown.
+type SessionBreakdown struct {
+	Proto                             string             `json:"proto"`
+	Addr                              string             `json:"address"`
+	ConnInfoBreakdown                 *ConnInfoBreakdown `json:"tcp_conn_info,omitempty"`
+	Client2ServerBytes                uint               `json:"tcp_c2s_bytes"`
+	Server2ClientBytes                uint               `json:"tcp_s2c_bytes"`
+	Client2ServerPackets              uint               `json:"tcp_c2s_packets"`
+	Server2ClientPackets              uint               `json:"tcp_s2c_packets"`
+	Client2ServerTinyPackets          uint               `json:"tcp_c2s_tiny_packets"`
+	Server2ClientTinyPackets          uint               `json:"tcp_s2c_tiny_packets"`
+	Client2ServerRetransmittedPackets uint               `json:"tcp_c2s_retransmitted_packets"`
+	Server2ClientRetransmittedPackets uint               `json:"tcp_s2c_retransmitted_packets"`
+	Client2ServerOutOfOrderPackets    uint               `json:"tcp_c2s_out_of_order_packets"`
+	Server2ClientOutOfOrderPackets    uint               `json:"tcp_s2c_out_of_order_packets"`
+	Client2ServerDupAcks              uint               `json:"tcp_c2s_duplicate_acks"`
+	Server2ClientDupAcks              uint               `json:"tcp_s2c_duplicate_acks"`
+	ClientZeroWindows                 uint               `json:"tcp_client_zero_windows"`
+	ServerZeroWindows                 uint               `json:"tcp_server_zero_windows"`
+	ApplicationSessionBreakdown       interface{}        `json:"application_session_breakdown"`
+}
+
+// Assembler TCP stream Assembler.
 type Assembler struct {
 	Count              uint32
 	Streams            map[Tuple4]*Stream
@@ -262,12 +331,13 @@ type Assembler struct {
 	SessionBreakdowns  []interface{}
 }
 
+// handleEstb TCP stream connection establishment handler.
 func (a *Assembler) handleEstb(stream *Stream, timestamp time.Time) {
-	log.Debugf("Tcp assembly: tcp connection %s is connected.", stream.Addr)
+	log.Debugf("TCP assembly: TCP connection %s is connected.", stream.Addr)
 
 	stream.State = StreamConnected
-	stream.Client.State = TcpEstablished
-	stream.Server.State = TcpEstablished
+	stream.Client.State = TCPEstablished
+	stream.Server.State = TCPEstablished
 	stream.HandshakeEstabTime = timestamp
 
 	if stream.Analyzer != nil {
@@ -275,6 +345,7 @@ func (a *Assembler) handleEstb(stream *Stream, timestamp time.Time) {
 	}
 }
 
+// handleData TCP stream connection data packets handler.
 func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream, timestamp time.Time) {
 	var direction Direction
 	if snd == &stream.Client {
@@ -283,7 +354,7 @@ func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream,
 		direction = FromServer
 	}
 
-	log.Debugf("Tcp assembly: tcp connection %s get %d bytes data %s.", stream.Addr, len(rcv.RecvData), direction)
+	log.Debugf("TCP assembly: TCP connection %s get %d bytes data %s.", stream.Addr, len(rcv.RecvData), direction)
 
 	var parseBytes int
 	if stream.Analyzer != nil {
@@ -298,7 +369,7 @@ func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream,
 		rcv.TotalRecvDataBytes += uint32(parseBytes)
 
 		if appSessionBreakdown != nil {
-			log.Debugf("Tcp assembly: tcp connection %s generate new session breakdown by Data %s.", stream.Addr, direction)
+			log.Debugf("TCP assembly: TCP connection %s generate new session breakdown by Data %s.", stream.Addr, direction)
 			a.SessionBreakdowns = append(a.SessionBreakdowns, stream.Session2Breakdown(appSessionBreakdown))
 		}
 	} else {
@@ -315,17 +386,18 @@ func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream,
 		if proto != "" ||
 			(rcv.TotalRecvDataBytes+uint32(parseBytes) > 200 && snd.TotalRecvDataBytes > 200) {
 			if proto != "" {
-				log.Debugf("Tcp assembly: detect recognizable appService=%s:%d-%s.", stream.Addr.DstIP, stream.Addr.DstPort, proto)
+				log.Debugf("TCP assembly: detect recognizable appService=%s:%d-%s.", stream.Addr.DstIP, stream.Addr.DstPort, proto)
 				appservice.Add(proto, stream.Addr.DstIP, stream.Addr.DstPort)
 			} else {
-				log.Debugf("Tcp assembly: detect unrecognizable appService=%s:%d.", stream.Addr.DstIP, stream.Addr.DstPort)
-				appservice.AddIgnored(stream.Addr.DstIP, stream.Addr.DstPort)
+				log.Debugf("TCP assembly: detect unrecognizable appService=%s:%d, will use default analyzer.", stream.Addr.DstIP, stream.Addr.DstPort)
+				appservice.Add(analyzer.DefaultAnalyzer, stream.Addr.DstIP, stream.Addr.DstPort)
 			}
 			a.removeStream(stream)
 		}
 	}
 }
 
+// handleReset TCP stream connection rest packet handler
 func (a *Assembler) handleReset(stream *Stream, snd *HalfStream, rcv *HalfStream, timestamp time.Time) {
 	var direction Direction
 	if snd == &stream.Client {
@@ -334,7 +406,7 @@ func (a *Assembler) handleReset(stream *Stream, snd *HalfStream, rcv *HalfStream
 		direction = FromServer
 	}
 
-	log.Warnf("Tcp assembly: tcp connection %s reset %s.", stream.Addr, direction)
+	log.Warnf("TCP assembly: TCP connection %s reset %s.", stream.Addr, direction)
 
 	if stream.State == StreamConnecting {
 		if direction == FromClient {
@@ -352,7 +424,7 @@ func (a *Assembler) handleReset(stream *Stream, snd *HalfStream, rcv *HalfStream
 			appSessionBreakdown = stream.Analyzer.HandleReset(false, timestamp)
 		}
 		if appSessionBreakdown != nil {
-			log.Debugf("Tcp assembly: tcp connection %s generate new session breakdown by Reset %s.", stream.Addr, direction)
+			log.Debugf("TCP assembly: TCP connection %s generate new session breakdown by Reset %s.", stream.Addr, direction)
 			a.SessionBreakdowns = append(a.SessionBreakdowns, stream.Session2Breakdown(appSessionBreakdown))
 		}
 	}
@@ -360,6 +432,7 @@ func (a *Assembler) handleReset(stream *Stream, snd *HalfStream, rcv *HalfStream
 	a.removeStream(stream)
 }
 
+// handleFin TCP stream connection fin packets handler.
 func (a *Assembler) handleFin(stream *Stream, snd *HalfStream, rcv *HalfStream, timestamp time.Time, lazyMode bool) {
 	var direction Direction
 	if snd == &stream.Client {
@@ -368,10 +441,10 @@ func (a *Assembler) handleFin(stream *Stream, snd *HalfStream, rcv *HalfStream, 
 		direction = FromServer
 	}
 
-	log.Debugf("Tcp assembly: tcp connection %s get fin packet %s in lazyMode=%t.", stream.Addr, direction, lazyMode)
+	log.Debugf("TCP assembly: TCP connection %s get fin packet %s in lazyMode=%t.", stream.Addr, direction, lazyMode)
 
 	if !lazyMode {
-		snd.State = TcpFinSent
+		snd.State = TCPFinSent
 	}
 	stream.State = StreamClosing
 	a.addClosingStream(stream, timestamp)
@@ -384,35 +457,39 @@ func (a *Assembler) handleFin(stream *Stream, snd *HalfStream, rcv *HalfStream, 
 			appSessionBreakdown = stream.Analyzer.HandleFin(false, timestamp)
 		}
 		if appSessionBreakdown != nil {
-			log.Debugf("Tcp assembly: tcp connection %s generate new session breakdown by Fin %s.", stream.Addr, direction)
+			log.Debugf("TCP assembly: TCP connection %s generate new session breakdown by Fin %s.", stream.Addr, direction)
 			a.SessionBreakdowns = append(a.SessionBreakdowns, stream.Session2Breakdown(appSessionBreakdown))
 		}
 	}
 }
 
+// handleClose TCP stream connection normal close handler.
 func (a *Assembler) handleClose(stream *Stream, timestamp time.Time) {
-	log.Debugf("Tcp assembly: tcp connection %s close normally.", stream.Addr)
+	log.Debugf("TCP assembly: TCP connection %s close normally.", stream.Addr)
 
 	stream.State = StreamClosed
 	a.removeStream(stream)
 }
 
+// handleCloseAbnormally TCP stream connection abnormal close handler.
 func (a *Assembler) handleCloseAbnormally(stream *Stream, timestamp time.Time) {
-	log.Errorf("Tcp assembly: tcp connection %s close abnormally.", stream.Addr)
+	log.Errorf("TCP assembly: TCP connection %s close abnormally.", stream.Addr)
 
 	stream.State = StreamClosedAbnormally
 	a.removeStream(stream)
 }
 
+// handleCloseExceedMaxCount TCP stream connection close handler for exceeding max TCP streams count.
 func (a *Assembler) handleCloseExceedMaxCount(stream *Stream, timestamp time.Time) {
-	log.Warnf("Tcp assembly: tcp connection %s close exceed max count.", stream.Addr)
+	log.Warnf("TCP assembly: TCP connection %s close exceed max count.", stream.Addr)
 
 	stream.State = StreamClosedExceedMaxCount
 	a.removeStream(stream)
 }
 
+// handleClosingTimeout TCP stream connection close handler for closing with timeout.
 func (a *Assembler) handleClosingTimeout(stream *Stream, timestamp time.Time) {
-	log.Errorf("Tcp assembly: tcp connection %s close timeout.", stream.Addr)
+	log.Errorf("TCP assembly: TCP connection %s close timeout.", stream.Addr)
 
 	stream.State = StreamClosingTimeout
 	a.removeStream(stream)
@@ -425,7 +502,7 @@ func (a *Assembler) findStream(ipDecoder layers.Decoder, tcp *layers.TCP) (*Stre
 		srcIP = ip4.SrcIP
 		dstIP = ip4.DstIP
 	} else {
-		log.Errorf("Tcp assembly: unsupported network decoder=%s.", reflect.TypeOf(ipDecoder))
+		log.Errorf("TCP assembly: unsupported network decoder=%s.", reflect.TypeOf(ipDecoder))
 		return nil, FromClient
 	}
 
@@ -457,11 +534,7 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 		srcIP = ip4.SrcIP
 		dstIP = ip4.DstIP
 	} else {
-		log.Errorf("Tcp assembly: unsupported network decoder=%s.", reflect.TypeOf(ipDecoder))
-		return
-	}
-
-	if appservice.IsIgnored(dstIP.String(), tcp.DstPort) {
+		log.Errorf("TCP assembly: unsupported network decoder=%s.", reflect.TypeOf(ipDecoder))
 		return
 	}
 
@@ -475,19 +548,20 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 		Addr:  addr,
 		State: StreamConnecting,
 		Client: HalfStream{
-			State:    TcpSynSent,
+			State:    TCPSynSent,
 			Seq:      tcp.Seq,
 			Ack:      tcp.Ack,
 			RecvData: make([]byte, 0, 4096),
 		},
 		Server: HalfStream{
-			State:     TcpClosed,
+			State:     TCPClosed,
 			ExpRcvSeq: tcp.Seq + 1,
 			RecvData:  make([]byte, 0, 4096),
 		},
 		HandshakeSyncTime:      timestamp,
 		HandshakeSyncRetryTime: timestamp,
 	}
+	stream.DumpConnInfo = true
 	stream.MSS = tcp.GetMSSOption()
 	stream.ResetDataExchangingInfo()
 
@@ -495,7 +569,7 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 		stream.Analyzer = analyzer.GetAnalyzer(proto)
 	}
 
-	if stream.Analyzer != nil || a.StreamsList.Len() < 65536 {
+	if stream.Analyzer != nil || a.StreamsList.Len() < maxTCPStreamsCount {
 		if stream.Analyzer != nil {
 			a.Count++
 		}
@@ -503,7 +577,7 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 		stream.StreamsListElement = a.StreamsList.PushBack(stream)
 	}
 
-	for a.StreamsList.Len() > 65536 {
+	for a.StreamsList.Len() > maxTCPStreamsCount {
 		stream := a.StreamsList.Front().Value.(*Stream)
 		a.handleCloseAbnormally(stream, timestamp)
 	}
@@ -585,10 +659,10 @@ func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, t
 
 		if seqDiff(endSeq, rcv.ExpRcvSeq) <= 0 {
 			if snd == &stream.Client {
-				log.Debugf("Tcp assembly: tcp connection %s get retransmited packet FromClient.", stream.Addr)
+				log.Debugf("TCP assembly: TCP connection %s get retransmited packet FromClient.", stream.Addr)
 				stream.Client2ServerRetransmittedPackets++
 			} else {
-				log.Debugf("Tcp assembly: tcp connection %s get retransmited packet FromServer.", stream.Addr)
+				log.Debugf("TCP assembly: TCP connection %s get retransmited packet FromServer.", stream.Addr)
 				stream.Server2ClientRetransmittedPackets++
 			}
 
@@ -611,10 +685,10 @@ func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, t
 		}
 	} else {
 		if snd == &stream.Client {
-			log.Debugf("Tcp assembly: tcp connection %s get out of order packet FromClient.", stream.Addr)
+			log.Debugf("TCP assembly: TCP connection %s get out of order packet FromClient.", stream.Addr)
 			stream.Client2ServerOutOfOrderPackets++
 		} else {
-			log.Debugf("Tcp assembly: tcp connection %s get out of order packet FromServer.", stream.Addr)
+			log.Debugf("TCP assembly: TCP connection %s get out of order packet FromServer.", stream.Addr)
 			stream.Server2ClientOutOfOrderPackets++
 		}
 
@@ -635,6 +709,7 @@ func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, t
 	}
 }
 
+// Assemble TCP stream assemble entry.
 func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder, timestamp time.Time) {
 	tcp := tcpDecoder.(*layers.TCP)
 	stream, direction := a.findStream(ipDecoder, tcp)
@@ -649,8 +724,8 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 	if tcp.SYN {
 		// The second packet of tcp three-way handshakes
 		if direction == FromServer && tcp.ACK &&
-			stream.Client.State == TcpSynSent && stream.Server.State == TcpClosed {
-			stream.Server.State = TcpSynReceived
+			stream.Client.State == TCPSynSent && stream.Server.State == TCPClosed {
+			stream.Server.State = TCPSynReceived
 			stream.Server.Seq = tcp.Seq
 			stream.Server.Ack = tcp.Ack
 			stream.Client.ExpRcvSeq = tcp.Seq + 1
@@ -663,19 +738,19 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 			return
 		}
 
-		// Tcp sync retries
+		// TCP sync retries
 		if direction == FromClient &&
-			stream.Client.State == TcpSynSent {
-			log.Debugf("Tcp assembly: tcp connection %s handshake with sync retry.", stream.Addr)
+			stream.Client.State == TCPSynSent {
+			log.Debugf("TCP assembly: TCP connection %s handshake with sync retry.", stream.Addr)
 			stream.HandshakeSyncRetryTime = timestamp
 			stream.HandshakeSyncRetries++
 			return
 		}
 
-		// Tcp sync/ack retries
+		// TCP sync/ack retries
 		if direction == FromServer &&
-			stream.Server.State == TcpSynReceived {
-			log.Debugf("Tcp assembly: tcp connection %s handshake with sync/ack retry.", stream.Addr)
+			stream.Server.State == TCPSynReceived {
+			log.Debugf("TCP assembly: TCP connection %s handshake with sync/ack retry.", stream.Addr)
 			stream.HandshakeSyncAckRetryTime = timestamp
 			stream.HandshakeSyncAckRetries++
 			return
@@ -696,7 +771,7 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 	}
 	snd.Seq = tcp.Seq
 
-	// Tcp rset packet
+	// TCP reset packet
 	if tcp.RST {
 		a.handleReset(stream, snd, rcv, timestamp)
 		return
@@ -705,9 +780,9 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 	if tcp.ACK {
 		// The third packet of tcp three-way handshakes
 		if direction == FromClient &&
-			stream.Client.State == TcpSynSent && stream.Server.State == TcpSynReceived {
+			stream.Client.State == TCPSynSent && stream.Server.State == TCPSynReceived {
 			if tcp.Seq != stream.Server.ExpRcvSeq {
-				log.Debug("Tcp assembly: unexpected sequence=%d of the third packet of "+
+				log.Debug("TCP assembly: unexpected sequence=%d of the third packet of "+
 					"tcp three-way handshakes, expected sequence=%d.", tcp.Seq, stream.Server.ExpRcvSeq)
 				a.handleCloseAbnormally(stream, timestamp)
 				return
@@ -727,11 +802,11 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 			}
 		}
 
-		if rcv.State == TcpFinSent {
-			rcv.State = TcpFinConfirmed
+		if rcv.State == TCPFinSent {
+			rcv.State = TCPFinConfirmed
 		}
 
-		if snd.State == TcpFinConfirmed && rcv.State == TcpFinConfirmed {
+		if snd.State == TCPFinConfirmed && rcv.State == TCPFinConfirmed {
 			a.handleClose(stream, timestamp)
 			return
 		}
@@ -757,7 +832,7 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 				}
 			}
 
-			if len(tcp.Payload) <= TinyTcpPayloadBytes {
+			if len(tcp.Payload) <= tinyTCPPayloadBytes {
 				if direction == FromClient {
 					stream.Client2ServerTinyPackets++
 				} else {
@@ -770,6 +845,7 @@ func (a *Assembler) Assemble(ipDecoder layers.Decoder, tcpDecoder layers.Decoder
 	}
 }
 
+// NewAssembler create a new TCP stream assembler.
 func NewAssembler() *Assembler {
 	return &Assembler{
 		Streams: make(map[Tuple4]*Stream),
