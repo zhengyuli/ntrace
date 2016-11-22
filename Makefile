@@ -9,13 +9,13 @@ all: build
 build:
 	@echo "Building nTrace... .. ."
 	@make -C analyzer/http/http_parser/
-	@go build -v -o ntrace github.com/zhengyuli/ntrace
+	@CGO_ENABLED=1  go build -v -o ntrace github.com/zhengyuli/ntrace
 
 .PHONY: debug
 debug:
 	@echo "Building nTrace debug version... .. ."
-	@make -C analyzer/http/http_parser/
-	@go build -gcflags '-N -l' -v -o ntrace github.com/zhengyuli/ntrace
+	@make -C analyzer/http/http_parser/ debug
+	@CGO_ENABLED=1 go build -gcflags '-N -l' -v -o ntrace github.com/zhengyuli/ntrace
 
 clean:
 	@rm -rf ntrace

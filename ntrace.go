@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/zhengyuli/ntrace/layers"
@@ -22,14 +23,16 @@ import (
 	"time"
 )
 
-type RunState uint32
+var globalRunState runState
 
-func (rs *RunState) stop() {
-	atomic.StoreUint32((*uint32)(rs), 1)
+type runState uint32
+
+func (r *runState) stop() {
+	atomic.StoreUint32((*uint32)(r), 1)
 }
 
-func (rs *RunState) stopped() bool {
-	s := atomic.LoadUint32((*uint32)(rs))
+func (r *runState) stopped() bool {
+	s := atomic.LoadUint32((*uint32)(r))
 
 	if s > 0 {
 		return true
@@ -38,29 +41,13 @@ func (rs *RunState) stopped() bool {
 	return false
 }
 
-var (
-	netDev   string
-	logDir   string
-	logFile  string
-	logLevel log.Level
-
-	runState RunState
-)
-
-func init() {
-	netDev = "en0"
-	logDir = "/var/log"
-	logFile = "ntrace"
-	logLevel = log.DebugLevel
-}
-
 func setupTeardown() {
 	sigChannel := make(chan os.Signal)
 	signal.Notify(sigChannel, syscall.SIGTERM, syscall.SIGINT)
 
 	go func() {
 		<-sigChannel
-		runState.stop()
+		globalRunState.stop()
 		signal.Stop(sigChannel)
 		close(sigChannel)
 	}()
@@ -109,7 +96,7 @@ func datalinkCaptureService(netDev string, ipDispatchChannel chan *layers.Packet
 	}
 
 	pkt := new(driver.Packet)
-	for !runState.stopped() {
+	for !globalRunState.stopped() {
 		err := handle.NextPacket(pkt)
 		if err != nil {
 			panic(err)
@@ -154,7 +141,7 @@ func ipProcessService(ipDispatchChannel chan *layers.Packet, icmpDispatchChannel
 	}()
 
 	timer := time.NewTimer(time.Second)
-	for !runState.stopped() {
+	for !globalRunState.stopped() {
 		timer.Reset(time.Second)
 		select {
 		case packet := <-ipDispatchChannel:
@@ -194,7 +181,7 @@ func icmpProcessService(icmpDispatchChannel chan *layers.Packet, wg *sync.WaitGr
 	}()
 
 	timer := time.NewTimer(time.Second)
-	for !runState.stopped() {
+	for !globalRunState.stopped() {
 		timer.Reset(time.Second)
 		select {
 		case packet := <-icmpDispatchChannel:
@@ -249,7 +236,7 @@ func tcpProcessService(tcpDispatchChannel chan *layers.Packet, tcpAssemblyChanne
 	timer := time.NewTimer(time.Second)
 	tcpDispatchChannelNum := uint32(len(tcpAssemblyChannels))
 
-	for !runState.stopped() {
+	for !globalRunState.stopped() {
 		timer.Reset(time.Second)
 		select {
 		case packet := <-tcpDispatchChannel:
@@ -293,7 +280,7 @@ func tcpAssemblyService(index int, tcpAssemblyChannel chan *layers.Packet, sessi
 	}()
 
 	timer := time.NewTimer(time.Second)
-	for !runState.stopped() {
+	for !globalRunState.stopped() {
 		timer.Reset(time.Second)
 		select {
 		case packet := <-tcpAssemblyChannel:
@@ -315,7 +302,7 @@ func sessionBreakdownDumpService(sessionBreakdownDumpChannel chan interface{}, w
 	}()
 
 	timer := time.NewTimer(time.Second)
-	for !runState.stopped() {
+	for !globalRunState.stopped() {
 		timer.Reset(time.Second)
 		select {
 		case sessionBreakdown := <-sessionBreakdownDumpChannel:
@@ -332,15 +319,30 @@ func sessionBreakdownDumpService(sessionBreakdownDumpChannel chan interface{}, w
 func main() {
 	setupTeardown()
 
-	out, err := setupLogger(logDir, logFile, logLevel)
+	netDev := flag.String("netDev", "", "Network device to capture packets")
+	logDir := flag.String("logDir", "./", "Log directory")
+	logFile := flag.String("logFile", "ntrace", "Log file")
+	tmpLogLevel := flag.String("logLevel", "info", "Log level: debug|info|warn|error|fatal|panic")
+	flag.Parse()
+
+	if *netDev == "" {
+		fmt.Println("Wrong argument: netDev is empty.")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	logLevel, err := log.ParseLevel(*tmpLogLevel)
 	if err != nil {
-		log.Fatalf("Setup default logger with error: %s.", err)
+		logLevel = log.InfoLevel
+	}
+	out, err := setupLogger(*logDir, *logFile, logLevel)
+	if err != nil {
+		fmt.Printf("Setup logger with error: %s.\n", err)
+		os.Exit(1)
 	}
 	defer out.Close()
 
-	// cpuNum := runtime.NumCPU()
-	cpuNum := 1
-
+	cpuNum := runtime.NumCPU()
 	log.Infof("Run with GOMAXPROCS=%d.", 2*cpuNum+1)
 	runtime.GOMAXPROCS(2*runtime.NumCPU() + 1)
 
@@ -365,7 +367,7 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(5 + cpuNum)
 
-	go datalinkCaptureService(netDev, ipDispatchChannel, &wg)
+	go datalinkCaptureService(*netDev, ipDispatchChannel, &wg)
 	go ipProcessService(ipDispatchChannel, icmpDispatchChannel, tcpDispatchChannel, &wg)
 	go icmpProcessService(icmpDispatchChannel, &wg)
 	go tcpProcessService(tcpDispatchChannel, tcpAssemblyChannels, &wg)

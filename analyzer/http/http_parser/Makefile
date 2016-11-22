@@ -21,7 +21,7 @@
 CC=gcc
 AR=ar
 
-CFLAGS += -Wall -Wextra -Werror -O3
+CFLAGS += -Wall -Wextra -Werror
 
 .PHONY: all
 
@@ -30,7 +30,14 @@ all: build
 .PHONY: build
 build:
 	@echo "Building HTTP Parser... .. ."
-	$(CC) $(CFLAGS) -c http_parser.c -o http_parser.o
+	$(CC) $(CFLAGS) -O3 -c http_parser.c -o http_parser.o
+	$(AR) rcs libhttp_parser.a http_parser.o
+	rm -f *.o
+
+.PHONY: debug
+debug:
+	@echo "Building HTTP Parser debug version... .. ."
+	$(CC) $(CFLAGS) -g -c http_parser.c -o http_parser.o
 	$(AR) rcs libhttp_parser.a http_parser.o
 	rm -f *.o
 
