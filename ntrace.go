@@ -316,13 +316,29 @@ func sessionBreakdownDumpService(sessionBreakdownDumpChannel chan interface{}, w
 	}
 }
 
+// channelBufferSize packet dispatch and session breakdown dump channel buffer size,
+// it can be changed by CHANNEL_BUFFER_SIZE env.
+var channelBufferSize = 100000
+
+func init() {
+	if bufferSize, err := strconv.Atoi(os.Getenv("CHANNEL_BUFFER_SIZE")); err != nil {
+		channelBufferSize = bufferSize
+	}
+}
+
 func main() {
+	if os.Geteuid() != 0 {
+		fmt.Println("Permission is denied, should run as root.")
+		os.Exit(1)
+	}
+
 	setupTeardown()
 
 	netDev := flag.String("netDev", "", "Network device to capture packets")
 	logDir := flag.String("logDir", "./", "Log directory")
 	logFile := flag.String("logFile", "ntrace", "Log file")
 	tmpLogLevel := flag.String("logLevel", "info", "Log level: debug|info|warn|error|fatal|panic")
+	debugMode := flag.Bool("debugMode", false, "Run in debug mode")
 	flag.Parse()
 
 	if *netDev == "" {
@@ -343,25 +359,30 @@ func main() {
 	defer out.Close()
 
 	cpuNum := runtime.NumCPU()
-	log.Infof("Run with GOMAXPROCS=%d.", 2*cpuNum+1)
-	runtime.GOMAXPROCS(2*runtime.NumCPU() + 1)
+	if *debugMode {
+		log.Info("Run in debug mode.")
+		cpuNum = 1
+	} else {
+		log.Infof("Run with GOMAXPROCS=%d.", 2*cpuNum+1)
+		runtime.GOMAXPROCS(2*cpuNum + 1)
+	}
 
-	ipDispatchChannel := make(chan *layers.Packet, 100000)
+	ipDispatchChannel := make(chan *layers.Packet, channelBufferSize)
 	defer close(ipDispatchChannel)
 
-	icmpDispatchChannel := make(chan *layers.Packet, 100000)
+	icmpDispatchChannel := make(chan *layers.Packet, channelBufferSize)
 	defer close(icmpDispatchChannel)
 
-	tcpDispatchChannel := make(chan *layers.Packet, 100000)
+	tcpDispatchChannel := make(chan *layers.Packet, channelBufferSize)
 	defer close(tcpDispatchChannel)
 
 	tcpAssemblyChannels := make([]chan *layers.Packet, cpuNum)
 	for i := 0; i < cpuNum; i++ {
-		tcpAssemblyChannels[i] = make(chan *layers.Packet, 100000)
+		tcpAssemblyChannels[i] = make(chan *layers.Packet, channelBufferSize)
 		defer close(tcpAssemblyChannels[i])
 	}
 
-	sessionBreakdownDumpChannel := make(chan interface{}, 100000)
+	sessionBreakdownDumpChannel := make(chan interface{}, channelBufferSize)
 	defer close(sessionBreakdownDumpChannel)
 
 	var wg sync.WaitGroup

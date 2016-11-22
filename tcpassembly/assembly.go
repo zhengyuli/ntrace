@@ -15,12 +15,12 @@ import (
 	"time"
 )
 
-// maxTCPStreamsCount max tcp streams count, default is 65536, you can change
-// it by MAX_TCP_STREAMS_COUNT env.
+// maxTCPStreamsCount max tcp streams count, default is 65536, it can
+// be changed by MAX_TCP_STREAMS_COUNT env.
 var maxTCPStreamsCount = 65536
 
-// tinyTCPPayloadBytes tiny TCP payload length, default is 32 bytes, you can
-// change it by TINY_TCP_PAYLOAD_BYTES env.
+// tinyTCPPayloadBytes tiny TCP payload length, default is 32 bytes, it
+// can be changed by TINY_TCP_PAYLOAD_BYTES env.
 var tinyTCPPayloadBytes = 32
 
 func init() {
