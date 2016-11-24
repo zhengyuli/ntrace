@@ -23,8 +23,6 @@ import (
 	"time"
 )
 
-var globalRunState runState
-
 type runState uint32
 
 func (r *runState) stop() {
@@ -41,13 +39,15 @@ func (r *runState) stopped() bool {
 	return false
 }
 
+var currentRunState runState
+
 func setupTeardown() {
 	sigChannel := make(chan os.Signal)
 	signal.Notify(sigChannel, syscall.SIGTERM, syscall.SIGINT)
 
 	go func() {
 		<-sigChannel
-		globalRunState.stop()
+		currentRunState.stop()
 		signal.Stop(sigChannel)
 		close(sigChannel)
 	}()
@@ -96,7 +96,7 @@ func datalinkCaptureService(netDev string, ipDispatchChannel chan *layers.Packet
 	}
 
 	pkt := new(driver.Packet)
-	for !globalRunState.stopped() {
+	for !currentRunState.stopped() {
 		err := handle.NextPacket(pkt)
 		if err != nil {
 			panic(err)
@@ -112,7 +112,7 @@ func datalinkCaptureService(netDev string, ipDispatchChannel chan *layers.Packet
 			layerType := handle.DatalinkType()
 			decoder := layerType.NewDecoder()
 			if decoder == nil {
-				panic(fmt.Errorf("No proper decoder for %s.", layerType.Name()))
+				panic(fmt.Errorf("No proper decoder for %s", layerType.Name()))
 			}
 			if err = decoder.Decode(pkt.Data); err != nil {
 				log.Errorf("Decode %s error: %s.", layerType.Name(), err)
@@ -140,9 +140,10 @@ func ipProcessService(ipDispatchChannel chan *layers.Packet, icmpDispatchChannel
 		wg.Done()
 	}()
 
-	timer := time.NewTimer(time.Second)
-	for !globalRunState.stopped() {
-		timer.Reset(time.Second)
+	timer := time.NewTicker(time.Second)
+	defer timer.Stop()
+
+	for !currentRunState.stopped() {
 		select {
 		case packet := <-ipDispatchChannel:
 			layerType := packet.DatalinkDecoder.NextLayerType()
@@ -180,9 +181,10 @@ func icmpProcessService(icmpDispatchChannel chan *layers.Packet, wg *sync.WaitGr
 		wg.Done()
 	}()
 
-	timer := time.NewTimer(time.Second)
-	for !globalRunState.stopped() {
-		timer.Reset(time.Second)
+	timer := time.NewTicker(time.Second)
+	defer timer.Stop()
+
+	for !currentRunState.stopped() {
 		select {
 		case packet := <-icmpDispatchChannel:
 			layerType := packet.NetworkDecoder.NextLayerType()
@@ -233,11 +235,12 @@ func tcpProcessService(tcpDispatchChannel chan *layers.Packet, tcpAssemblyChanne
 	}()
 
 	var srcIP, dstIP net.IP
-	timer := time.NewTimer(time.Second)
 	tcpDispatchChannelNum := uint32(len(tcpAssemblyChannels))
 
-	for !globalRunState.stopped() {
-		timer.Reset(time.Second)
+	timer := time.NewTicker(time.Second)
+	defer timer.Stop()
+
+	for !currentRunState.stopped() {
 		select {
 		case packet := <-tcpDispatchChannel:
 			layerType := packet.NetworkDecoder.NextLayerType()
@@ -279,9 +282,10 @@ func tcpAssemblyService(index int, tcpAssemblyChannel chan *layers.Packet, sessi
 		wg.Done()
 	}()
 
-	timer := time.NewTimer(time.Second)
-	for !globalRunState.stopped() {
-		timer.Reset(time.Second)
+	timer := time.NewTicker(time.Second)
+	defer timer.Stop()
+
+	for !currentRunState.stopped() {
 		select {
 		case packet := <-tcpAssemblyChannel:
 			assembler.Assemble(packet.NetworkDecoder, packet.TransportDecoder, packet.Time)
@@ -301,9 +305,10 @@ func sessionBreakdownDumpService(sessionBreakdownDumpChannel chan interface{}, w
 		wg.Done()
 	}()
 
-	timer := time.NewTimer(time.Second)
-	for !globalRunState.stopped() {
-		timer.Reset(time.Second)
+	timer := time.NewTicker(time.Second)
+	defer timer.Stop()
+
+	for !currentRunState.stopped() {
 		select {
 		case sessionBreakdown := <-sessionBreakdownDumpChannel:
 			if sessionBreakdownBuf, err := json.Marshal(sessionBreakdown); err == nil {
@@ -316,13 +321,13 @@ func sessionBreakdownDumpService(sessionBreakdownDumpChannel chan interface{}, w
 	}
 }
 
-// channelBufferSize packet dispatch and session breakdown dump channel buffer size,
-// it can be changed by CHANNEL_BUFFER_SIZE env.
-var channelBufferSize = 100000
+// packetChannelBufferSize packet dispatch channel buffer size, it can be
+// changed by PACKET_CHANNEL_BUFFER_SIZE env.
+var packetChannelBufferSize = 100000
 
 func init() {
-	if bufferSize, err := strconv.Atoi(os.Getenv("CHANNEL_BUFFER_SIZE")); err != nil {
-		channelBufferSize = bufferSize
+	if bufferSize, err := strconv.Atoi(os.Getenv("PACKET_CHANNEL_BUFFER_SIZE")); err != nil {
+		packetChannelBufferSize = bufferSize
 	}
 }
 
@@ -367,34 +372,44 @@ func main() {
 		runtime.GOMAXPROCS(2*cpuNum + 1)
 	}
 
-	ipDispatchChannel := make(chan *layers.Packet, channelBufferSize)
+	ipDispatchChannel := make(chan *layers.Packet, packetChannelBufferSize)
 	defer close(ipDispatchChannel)
 
-	icmpDispatchChannel := make(chan *layers.Packet, channelBufferSize)
+	icmpDispatchChannel := make(chan *layers.Packet, packetChannelBufferSize)
 	defer close(icmpDispatchChannel)
 
-	tcpDispatchChannel := make(chan *layers.Packet, channelBufferSize)
+	tcpDispatchChannel := make(chan *layers.Packet, packetChannelBufferSize)
 	defer close(tcpDispatchChannel)
 
 	tcpAssemblyChannels := make([]chan *layers.Packet, cpuNum)
 	for i := 0; i < cpuNum; i++ {
-		tcpAssemblyChannels[i] = make(chan *layers.Packet, channelBufferSize)
+		tcpAssemblyChannels[i] = make(chan *layers.Packet, packetChannelBufferSize)
 		defer close(tcpAssemblyChannels[i])
 	}
 
-	sessionBreakdownDumpChannel := make(chan interface{}, channelBufferSize)
+	sessionBreakdownDumpChannel := make(chan interface{}, 100000)
 	defer close(sessionBreakdownDumpChannel)
 
 	var wg sync.WaitGroup
-	wg.Add(5 + cpuNum)
 
+	wg.Add(1)
 	go datalinkCaptureService(*netDev, ipDispatchChannel, &wg)
+
+	wg.Add(1)
 	go ipProcessService(ipDispatchChannel, icmpDispatchChannel, tcpDispatchChannel, &wg)
+
+	wg.Add(1)
 	go icmpProcessService(icmpDispatchChannel, &wg)
+
+	wg.Add(1)
 	go tcpProcessService(tcpDispatchChannel, tcpAssemblyChannels, &wg)
+
 	for i := 0; i < cpuNum; i++ {
+		wg.Add(1)
 		go tcpAssemblyService(i, tcpAssemblyChannels[i], sessionBreakdownDumpChannel, &wg)
 	}
+
+	wg.Add(1)
 	go sessionBreakdownDumpService(sessionBreakdownDumpChannel, &wg)
 
 	wg.Wait()
