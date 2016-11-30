@@ -5,11 +5,6 @@ import (
 	"time"
 )
 
-const (
-	// ProtoName TCP analyzer proto name.
-	ProtoName = "TCP"
-)
-
 type sessionState uint16
 
 const (
@@ -75,11 +70,6 @@ func (a *Analyzer) Init() {
 	log.Debug("TCP Analyzer: init.")
 }
 
-// Proto TCP analyzer get proto name function.
-func (a *Analyzer) Proto() (protoName string) {
-	return ProtoName
-}
-
 // HandleEstb TCP analyzer handle TCP connection establishment function.
 func (a *Analyzer) HandleEstb(timestamp time.Time) {
 	log.Debug("TCP Analyzer: HandleEstb.")
@@ -133,9 +123,4 @@ func (a *Analyzer) HandleFin(fromClient bool, timestamp time.Time) (sessionBreak
 	}
 
 	return nil
-}
-
-// DetectProto TCP proto detect function, always return empty.
-func DetectProto(payload []byte, fromClient bool, timestamp time.Time) (proto string) {
-	return ""
 }

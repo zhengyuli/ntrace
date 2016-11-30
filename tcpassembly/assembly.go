@@ -4,9 +4,10 @@ import (
 	"container/list"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"github.com/zhengyuli/ntrace/analyzer"
-	"github.com/zhengyuli/ntrace/appservice"
 	"github.com/zhengyuli/ntrace/layers"
+	"github.com/zhengyuli/ntrace/proto"
+	"github.com/zhengyuli/ntrace/proto/analyzer"
+	"github.com/zhengyuli/ntrace/proto/detector"
 	"math"
 	"net"
 	"os"
@@ -215,6 +216,8 @@ type Stream struct {
 	ClientZeroWindows                 uint
 	ServerZeroWindows                 uint
 
+	// TCP application layer proto name
+	ProtoName string
 	// TCP application layer analyzer
 	Analyzer analyzer.Analyzer
 
@@ -249,7 +252,7 @@ func (s *Stream) ResetDataExchangingInfo() {
 func (s *Stream) Session2Breakdown(appSessionBreakdown interface{}) *SessionBreakdown {
 	sb := new(SessionBreakdown)
 
-	sb.Proto = s.Analyzer.Proto()
+	sb.Proto = s.ProtoName
 	sb.Addr = s.Addr.String()
 
 	// Dump TCP stream connection info
@@ -373,24 +376,24 @@ func (a *Assembler) handleData(stream *Stream, snd *HalfStream, rcv *HalfStream,
 			a.SessionBreakdowns = append(a.SessionBreakdowns, stream.Session2Breakdown(appSessionBreakdown))
 		}
 	} else {
-		var proto string
+		var protoName string
 
 		if direction == FromClient {
-			parseBytes, proto = analyzer.DetectProto(rcv.RecvData, true, timestamp)
+			parseBytes, protoName = detector.DetectProto(rcv.RecvData, true)
 		} else {
-			parseBytes, proto = analyzer.DetectProto(rcv.RecvData, false, timestamp)
+			parseBytes, protoName = detector.DetectProto(rcv.RecvData, false)
 		}
 		rcv.RecvData = rcv.RecvData[parseBytes:]
 		rcv.TotalRecvDataBytes += uint32(parseBytes)
 
-		if proto != "" ||
+		if protoName != "" ||
 			(rcv.TotalRecvDataBytes+uint32(parseBytes) > 200 && snd.TotalRecvDataBytes > 200) {
-			if proto != "" {
-				log.Debugf("TCP assembly: detect recognizable appService=%s:%d-%s.", stream.Addr.DstIP, stream.Addr.DstPort, proto)
-				appservice.Add(proto, stream.Addr.DstIP, stream.Addr.DstPort)
+			if protoName != "" {
+				log.Debugf("TCP assembly: detect recognizable proto=%s:%d-%s.", stream.Addr.DstIP, stream.Addr.DstPort, protoName)
+				detector.AddProto(protoName, stream.Addr.DstIP, stream.Addr.DstPort)
 			} else {
-				log.Debugf("TCP assembly: detect unrecognizable appService=%s:%d, will use default analyzer.", stream.Addr.DstIP, stream.Addr.DstPort)
-				appservice.Add(analyzer.DefaultAnalyzer, stream.Addr.DstIP, stream.Addr.DstPort)
+				log.Debugf("TCP assembly: detect unrecognizable proto=%s:%d, will be recognized as default proto.", stream.Addr.DstIP, stream.Addr.DstPort)
+				detector.AddProto(proto.DefaultProtoName, stream.Addr.DstIP, stream.Addr.DstPort)
 			}
 			a.removeStream(stream)
 		}
@@ -565,9 +568,8 @@ func (a *Assembler) addStream(ipDecoder layers.Decoder, tcp *layers.TCP, timesta
 	stream.MSS = tcp.GetMSSOption()
 	stream.ResetDataExchangingInfo()
 
-	if proto, err := appservice.GetProto(dstIP.String(), tcp.DstPort); err == nil {
-		stream.Analyzer = analyzer.GetAnalyzer(proto)
-	}
+	stream.ProtoName = detector.GetProto(dstIP.String(), tcp.DstPort)
+	stream.Analyzer = analyzer.GetAnalyzer(stream.ProtoName)
 
 	if stream.Analyzer != nil || a.StreamsList.Len() < maxTCPStreamsCount {
 		if stream.Analyzer != nil {
