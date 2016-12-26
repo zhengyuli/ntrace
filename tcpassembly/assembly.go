@@ -614,6 +614,16 @@ func (a *Assembler) checkClosingStream(timestamp time.Time) {
 }
 
 func (a *Assembler) addFromPage(stream *Stream, snd *HalfStream, rcv *HalfStream, page *Page, timestamp time.Time) {
+	if snd == &stream.Client {
+		log.Debugf("TCP assembly: TCP connection %s receive packet with Seq=%d, Len=%d, URG=%t from FromClient, "+
+			"the expectedRcvSeq=%d, seqDiff=%d.",
+			stream.Addr, page.Seq, len(page.Payload), page.URG, rcv.ExpRcvSeq, seqDiff(rcv.ExpRcvSeq, page.Seq))
+	} else {
+		log.Debugf("TCP assembly: TCP connection %s receive packet with Seq=%d, len=%d, URG=%t from FromServer, "+
+			"the expectedRcvSeq=%d, seqDiff=%d.",
+			stream.Addr, page.Seq, len(page.Payload), page.URG, rcv.ExpRcvSeq, seqDiff(rcv.ExpRcvSeq, page.Seq))
+	}
+
 	if page.URG {
 		if seqDiff(page.Seq+uint32(page.Urgent-1), rcv.ExpRcvSeq) >= 0 {
 			rcv.RecvData = append(

@@ -349,19 +349,19 @@ func init() {
 }
 
 func main() {
-	if os.Geteuid() != 0 {
-		fmt.Println("Permission is denied, should run as root.")
-		os.Exit(1)
-	}
-
 	setupTeardown()
 
 	netDev := flag.String("netDev", "", "Network device to capture packets")
 	logDir := flag.String("logDir", "./", "Log directory")
 	logFile := flag.String("logFile", "ntrace", "Log file")
 	tmpLogLevel := flag.String("logLevel", "info", "Log level: debug|info|warn|error|fatal|panic")
-	debugMode := flag.Bool("debugMode", false, "Run in debug mode")
+	singleRoutine := flag.Bool("singleRoutine", false, "Run in debug mode")
 	flag.Parse()
+
+	if os.Geteuid() != 0 {
+		fmt.Println("Permission is denied, should run as root.")
+		os.Exit(1)
+	}
 
 	if *netDev == "" {
 		fmt.Println("Wrong argument: netDev is empty.")
@@ -381,8 +381,8 @@ func main() {
 	defer out.Close()
 
 	cpuNum := runtime.NumCPU()
-	if *debugMode {
-		log.Info("Run in debug mode.")
+	if *singleRoutine {
+		log.Info("Run in single routine mode.")
 		cpuNum = 1
 	} else {
 		log.Infof("Run with GOMAXPROCS=%d.", 2*cpuNum+1)
