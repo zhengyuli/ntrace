@@ -18,7 +18,8 @@ debug:
 	@CGO_ENABLED=1 go build -gcflags '-N -l' -v -o ntrace github.com/zhengyuli/ntrace
 
 clean:
-	@rm -rf ntrace
+	@make -C proto/analyzer/http/http_parser/ clean
+	rm -rf ntrace
 
 check: fmt vet test test-race
 

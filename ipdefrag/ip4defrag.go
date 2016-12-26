@@ -1,4 +1,4 @@
-package ip4defrag
+package ipdefrag
 
 import (
 	"container/list"
@@ -17,25 +17,28 @@ const (
 	IPv4MaximumFragmentListSize = 8
 )
 
-type fragmentList struct {
-	fragments    list.List
-	Highest      uint16
-	Current      uint16
-	LastReceived bool
-	LastSeen     time.Time
+// FragmentList IPv4 fragment list.
+type FragmentList struct {
+	IPv4Frag                IPv4Fragment
+	Fragments               list.List
+	Highest                 uint16
+	Current                 uint16
+	LastReceived            bool
+	LastSeen                time.Time
+	FragmentListListElement *list.Element
 }
 
-func (f *fragmentList) insert(ip *layers.IPv4) (*layers.IPv4, error) {
+func (f *FragmentList) insert(ip *layers.IPv4) (*layers.IPv4, error) {
 	fragOffset := ip.FragOffset * 8
 	if fragOffset >= f.Highest {
-		f.fragments.PushBack(ip)
+		f.Fragments.PushBack(ip)
 	} else {
-		for e := f.fragments.Front(); e != nil; e = e.Next() {
+		for e := f.Fragments.Front(); e != nil; e = e.Next() {
 			frag, _ := e.Value.(*layers.IPv4)
 			if ip.FragOffset <= frag.FragOffset {
 				log.Debug("IPv4 defrag: insert IPv4 fragment %d before existing IP fragment %d.",
 					fragOffset, frag.FragOffset*8)
-				f.fragments.InsertBefore(ip, e)
+				f.Fragments.InsertBefore(ip, e)
 				break
 			}
 		}
@@ -49,7 +52,7 @@ func (f *fragmentList) insert(ip *layers.IPv4) (*layers.IPv4, error) {
 	}
 
 	log.Debug("IPv4 defrag: IPv4 fragments list length: %d, highest: %d, current: %d.",
-		f.fragments.Len(), f.Highest, f.Current)
+		f.Fragments.Len(), f.Highest, f.Current)
 
 	if !ip.MF {
 		f.LastReceived = true
@@ -60,12 +63,12 @@ func (f *fragmentList) insert(ip *layers.IPv4) (*layers.IPv4, error) {
 	return nil, nil
 }
 
-func (f *fragmentList) glue(ip *layers.IPv4) (*layers.IPv4, error) {
+func (f *FragmentList) glue(ip *layers.IPv4) (*layers.IPv4, error) {
 	var final []byte
 	var currentOffset uint16
 
 	log.Debug("IPv4 defrag: start gluing IPv4 fragments.")
-	for e := f.fragments.Front(); e != nil; e = e.Next() {
+	for e := f.Fragments.Front(); e != nil; e = e.Next() {
 		frag, _ := e.Value.(*layers.IPv4)
 		if frag.FragOffset*8 == currentOffset {
 			log.Debug("IPv4 defrag: glue IPv4 fragment - %d.", frag.FragOffset*8)
@@ -107,15 +110,26 @@ func (f *fragmentList) glue(ip *layers.IPv4) (*layers.IPv4, error) {
 	return out, nil
 }
 
-type ipv4 struct {
-	srcIP string
-	dstIP string
-	id    uint16
+// IPv4Fragment IPv4 fragment.
+type IPv4Fragment struct {
+	SrcIP string
+	DstIP string
+	ID    uint16
+}
+
+// Equal check IPv4Fragment is equal.
+func (i IPv4Fragment) Equal(n IPv4Fragment) bool {
+	if i.SrcIP == n.SrcIP && i.DstIP == n.DstIP && i.ID == n.ID {
+		return true
+	}
+
+	return false
 }
 
 // IPv4Defragmenter IPv4 defragmenter to defrag IPv4 fragment.
 type IPv4Defragmenter struct {
-	ipFlows map[ipv4]*fragmentList
+	ipFlows          map[IPv4Fragment]*FragmentList
+	FragmentListList list.List
 }
 
 // DefragIPv4 IPv4 defragment entry.
@@ -139,30 +153,43 @@ func (d *IPv4Defragmenter) DefragIPv4(ip *layers.IPv4) (*layers.IPv4, error) {
 	log.Debug("IPv4 defrag: got an IPv4 fragment with ID=%d, FragOffset=%d, DF=%t, MF=%t.",
 		uint16(ip.ID), ip.FragOffset, ip.DF, ip.MF)
 
-	ipf := ipv4{
-		srcIP: ip.SrcIP.String(),
-		dstIP: ip.DstIP.String(),
-		id:    ip.ID,
+	ipf := IPv4Fragment{
+		SrcIP: ip.SrcIP.String(),
+		DstIP: ip.DstIP.String(),
+		ID:    ip.ID,
+	}
+
+	// Remove expired fragment list if any
+	for d.FragmentListList.Len() > 0 {
+		fragmentList := d.FragmentListList.Front().Value.(*FragmentList)
+		if fragmentList.IPv4Frag.Equal(ipf) ||
+			time.Now().Before(fragmentList.LastSeen.Add(time.Second*30)) {
+			break
+		}
+
+		delete(d.ipFlows, fragmentList.IPv4Frag)
+		d.FragmentListList.Remove(fragmentList.FragmentListListElement)
 	}
 
 	fl, exist := d.ipFlows[ipf]
 	if !exist {
 		log.Debug("IPv4 defrag: create new IPv4 fragments list.")
-		fl = new(fragmentList)
+		fl = new(FragmentList)
+		fl.IPv4Frag = ipf
 		d.ipFlows[ipf] = fl
+	} else {
+		d.FragmentListList.Remove(fl.FragmentListListElement)
 	}
 	out, err := fl.insert(ip)
 
-	if out != nil || err != nil {
+	if out != nil || err != nil || fl.Fragments.Len() >= IPv4MaximumFragmentListSize {
 		delete(d.ipFlows, ipf)
-	}
-
-	// If we hit the maximum frag list len without any defrag success,
-	// we just drop everything and raise an error.
-	if out == nil && fl.fragments.Len() >= IPv4MaximumFragmentListSize {
-		delete(d.ipFlows, ipf)
-		err = fmt.Errorf("IPv4 fragments list hits its maximum "+
-			"size=%d without success, flushing the list", IPv4MaximumFragmentListSize)
+		if fl.Fragments.Len() >= IPv4MaximumFragmentListSize {
+			err = fmt.Errorf("IPv4 fragments list hits its maximum "+
+				"size=%d without success, flushing the list", IPv4MaximumFragmentListSize)
+		}
+	} else {
+		fl.FragmentListListElement = d.FragmentListList.PushBack(fl)
 	}
 
 	return out, err
@@ -171,6 +198,6 @@ func (d *IPv4Defragmenter) DefragIPv4(ip *layers.IPv4) (*layers.IPv4, error) {
 // NewIPv4Defragmenter returns a new IPv4Defragmenter.
 func NewIPv4Defragmenter() *IPv4Defragmenter {
 	return &IPv4Defragmenter{
-		ipFlows: make(map[ipv4]*fragmentList),
+		ipFlows: make(map[IPv4Fragment]*FragmentList),
 	}
 }

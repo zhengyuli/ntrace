@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
+	"github.com/zhengyuli/ntrace/ipdefrag"
 	"github.com/zhengyuli/ntrace/layers"
 	"github.com/zhengyuli/ntrace/sniffer"
 	"github.com/zhengyuli/ntrace/sniffer/driver"
@@ -140,6 +141,8 @@ func ipProcessService(ipDispatchChannel chan *layers.Packet, icmpDispatchChannel
 		wg.Done()
 	}()
 
+	ip4Defrager := ipdefrag.NewIPv4Defragmenter()
+
 	timer := time.NewTicker(time.Second)
 	defer timer.Stop()
 
@@ -152,6 +155,20 @@ func ipProcessService(ipDispatchChannel chan *layers.Packet, icmpDispatchChannel
 				log.Errorf("No proper decoder for %s.", layerType.Name())
 				continue
 			}
+
+			if ip4PktFragment, ok := decoder.(*layers.IPv4); ok {
+				if ip4Pkt, err := ip4Defrager.DefragIPv4(ip4PktFragment); err == nil {
+					if ip4Pkt == nil {
+						continue
+					}
+
+					decoder = ip4Pkt
+				} else {
+					log.Errorf("Defrag IPv4 packet fragment error: %s.", err)
+					continue
+				}
+			}
+
 			if err := decoder.Decode(packet.DatalinkDecoder.LayerPayload()); err != nil {
 				log.Errorf("Decode %s error: %s.", layerType.Name(), err)
 				continue

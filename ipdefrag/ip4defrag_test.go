@@ -1,4 +1,4 @@
-package ip4defrag
+package ipdefrag
 
 import (
 	"bytes"
