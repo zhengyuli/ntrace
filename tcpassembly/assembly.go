@@ -686,7 +686,19 @@ func (a *Assembler) tcpQueue(stream *Stream, snd *HalfStream, rcv *HalfStream, t
 			if seqDiff(e.Value.(*Page).Seq, rcv.ExpRcvSeq) > 0 {
 				break
 			}
-			a.addFromPage(stream, snd, rcv, e.Value.(*Page), timestamp)
+
+			if seqDiff(e.Value.(*Page).Seq+uint32(len(e.Value.(*Page).Payload)), rcv.ExpRcvSeq) <= 0 {
+				if snd == &stream.Client {
+					log.Debugf("TCP assembly: TCP connection %s get out of order retransmited packet FromClient.", stream.Addr)
+					stream.Client2ServerRetransmittedPackets++
+				} else {
+					log.Debugf("TCP assembly: TCP connection %s get out of order retransmited packet FromServer.", stream.Addr)
+					stream.Server2ClientRetransmittedPackets++
+				}
+			} else {
+				a.addFromPage(stream, snd, rcv, e.Value.(*Page), timestamp)
+			}
+
 			tmp := e.Next()
 			rcv.Pages.Remove(e)
 			e = tmp

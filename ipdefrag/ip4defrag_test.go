@@ -2,12 +2,14 @@ package ipdefrag
 
 import (
 	"bytes"
-	"github.com/zhengyuli/ntrace/layers"
 	"net"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/zhengyuli/ntrace/layers"
 )
 
-// Frame 1-1 (1514 bytes)
+// Ping frame 1-1 (1514 bytes)
 var testPing1Frag1 = []byte{
 	0xf4, 0xca, 0xe5, 0x4e, 0xe1, 0x46, 0x7c, 0x7a,
 	0x91, 0x7d, 0x7c, 0x74, 0x08, 0x00, 0x45, 0x00,
@@ -201,7 +203,7 @@ var testPing1Frag1 = []byte{
 	0xbe, 0xbf, /* .. */
 }
 
-// Frame 1-2 (1514 bytes)
+// Ping frame 1-2 (1514 bytes)
 var testPing1Frag2 = []byte{
 	0xf4, 0xca, 0xe5, 0x4e, 0xe1, 0x46, 0x7c, 0x7a,
 	0x91, 0x7d, 0x7c, 0x74, 0x08, 0x00, 0x45, 0x00,
@@ -395,7 +397,7 @@ var testPing1Frag2 = []byte{
 	0x86, 0x87, /* .. */
 }
 
-// Frame 1-3 (1514 bytes)
+// Ping frame 1-3 (1514 bytes)
 var testPing1Frag3 = []byte{
 	0xf4, 0xca, 0xe5, 0x4e, 0xe1, 0x46, 0x7c, 0x7a,
 	0x91, 0x7d, 0x7c, 0x74, 0x08, 0x00, 0x45, 0x00,
@@ -589,7 +591,7 @@ var testPing1Frag3 = []byte{
 	0x4e, 0x4f, /* NO */
 }
 
-// Frame 1-4 (102 bytes)
+// Ping frame 1-4 (102 bytes)
 var testPing1Frag4 = []byte{
 	0xf4, 0xca, 0xe5, 0x4e, 0xe1, 0x46, 0x7c, 0x7a,
 	0x91, 0x7d, 0x7c, 0x74, 0x08, 0x00, 0x45, 0x00,
@@ -606,7 +608,7 @@ var testPing1Frag4 = []byte{
 	0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, /* ...... */
 }
 
-// Frame 2-1 (1514 bytes)
+// Ping frame 2-1 (1514 bytes)
 var testPing2Frag1 = []byte{
 	0xf4, 0xca, 0xe5, 0x4e, 0xe1, 0x46, 0x7c, 0x7a,
 	0x91, 0x7d, 0x7c, 0x74, 0x08, 0x00, 0x45, 0x00,
@@ -800,7 +802,7 @@ var testPing2Frag1 = []byte{
 	0xbe, 0xbf, /* .. */
 }
 
-// Frame 2-2 (1514 bytes)
+// Ping frame 2-2 (1514 bytes)
 var testPing2Frag2 = []byte{
 	0xf4, 0xca, 0xe5, 0x4e, 0xe1, 0x46, 0x7c, 0x7a,
 	0x91, 0x7d, 0x7c, 0x74, 0x08, 0x00, 0x45, 0x00,
@@ -994,7 +996,7 @@ var testPing2Frag2 = []byte{
 	0x86, 0x87, /* .. */
 }
 
-// Frame 2-3 (1514 bytes)
+// Ping frame 2-3 (1514 bytes)
 var testPing2Frag3 = []byte{
 	0xf4, 0xca, 0xe5, 0x4e, 0xe1, 0x46, 0x7c, 0x7a,
 	0x91, 0x7d, 0x7c, 0x74, 0x08, 0x00, 0x45, 0x00,
@@ -1188,7 +1190,7 @@ var testPing2Frag3 = []byte{
 	0x4e, 0x4f, /* NO */
 }
 
-// Frame 2-4 (102 bytes)
+// Ping frame 2-4 (102 bytes)
 var testPing2Frag4 = []byte{
 	0xf4, 0xca, 0xe5, 0x4e, 0xe1, 0x46, 0x7c, 0x7a,
 	0x91, 0x7d, 0x7c, 0x74, 0x08, 0x00, 0x45, 0x00,
@@ -1214,56 +1216,41 @@ func TestNotFrag(t *testing.T) {
 		MF:      false,
 		DF:      true,
 	}
-	defrag := NewIPv4Defragmenter()
+	defragmenter := NewIPv4Defragmenter()
 
-	out, err := defrag.DefragIPv4(&ip)
-	if out == nil || err != nil {
-		t.Errorf("IPv4 defrag: this packet do not need to be defrag ['%s'].", err)
-	}
-
-	if len(defrag.ipFlows) != 0 {
-		t.Error("IPv4 defrag: defrager should be empty.")
-	}
+	out, err := defragmenter.DefragIPv4(&ip)
+	assert.True(t, out != nil && err == nil, "not a fragmented packet")
+	assert.Equal(t, 0, len(defragmenter.FragmentAggregators), "defragment IPv4 flows should be 0")
 }
 
 func TestDefragPing1(t *testing.T) {
-	defrag := NewIPv4Defragmenter()
+	defragmenter := NewIPv4Defragmenter()
 
-	// We inject the 4 fragment and test the DefragIPv4 interface
-	genTestDefrag(t, defrag, testPing1Frag1, false, "Ping1Frag1")
-	genTestDefrag(t, defrag, testPing1Frag3, false, "Ping1Frag3")
-	genTestDefrag(t, defrag, testPing1Frag2, false, "Ping1Frag2")
-	ip := genTestDefrag(t, defrag, testPing1Frag4, true, "Ping1Frag4")
-
-	if len(ip.Payload) != 4508 {
-		t.Errorf("IPv4 defrag: expecting a packet of 4508 bytes, got %d.", len(ip.Payload))
-	}
+	genTestDefrag(t, defragmenter, testPing1Frag1, false, "Ping1Frag1")
+	genTestDefrag(t, defragmenter, testPing1Frag3, false, "Ping1Frag3")
+	genTestDefrag(t, defragmenter, testPing1Frag2, false, "Ping1Frag2")
+	ip := genTestDefrag(t, defragmenter, testPing1Frag4, true, "Ping1Frag4")
+	assert.Equal(t, 4508, len(ip.Payload), "expecting a defragmented IPv4 packet with 4508 length")
 
 	validPayload := append(testPing1Frag1[34:], testPing1Frag2[34:]...)
 	validPayload = append(validPayload, testPing1Frag3[34:]...)
 	validPayload = append(validPayload, testPing1Frag4[34:]...)
-
-	if bytes.Compare(validPayload, ip.Payload) != 0 {
-		t.Error("IPv4 defrag: payload is not correctly defragmented.")
-	}
-
-	if len(defrag.ipFlows) != 0 {
-		t.Error("IPv4 defrag: defrager should be empty.")
-	}
+	assert.Equal(t, validPayload, ip.Payload, "return a defragmented IPv4 packet with unexpected payload")
+	assert.Equal(t, 0, len(defragmenter.FragmentAggregators), "defragment IPv4 flows should be 0")
 }
 
 func TestDefragPing1and2(t *testing.T) {
-	defrag := NewIPv4Defragmenter()
+	defragmenter := NewIPv4Defragmenter()
 
 	// We inject the 8 mixed fragments from two "flows"
 	// and test the DefragIPv4 interface
-	genTestDefrag(t, defrag, testPing1Frag1, false, "Ping1Frag1")
-	genTestDefrag(t, defrag, testPing1Frag3, false, "Ping1Frag3")
-	genTestDefrag(t, defrag, testPing2Frag3, false, "Ping2Frag3")
-	genTestDefrag(t, defrag, testPing2Frag4, false, "Ping2Frag4")
-	genTestDefrag(t, defrag, testPing1Frag2, false, "Ping1Frag2")
-	genTestDefrag(t, defrag, testPing2Frag1, false, "Ping2Frag1")
-	ip := genTestDefrag(t, defrag, testPing1Frag4, true, "Ping1Frag4")
+	genTestDefrag(t, defragmenter, testPing1Frag1, false, "Ping1Frag1")
+	genTestDefrag(t, defragmenter, testPing1Frag3, false, "Ping1Frag3")
+	genTestDefrag(t, defragmenter, testPing2Frag3, false, "Ping2Frag3")
+	genTestDefrag(t, defragmenter, testPing2Frag4, false, "Ping2Frag4")
+	genTestDefrag(t, defragmenter, testPing1Frag2, false, "Ping1Frag2")
+	genTestDefrag(t, defragmenter, testPing2Frag1, false, "Ping2Frag1")
+	ip := genTestDefrag(t, defragmenter, testPing1Frag4, true, "Ping1Frag4")
 
 	if len(ip.Payload) != 4508 {
 		t.Fatalf("IPv4 defrag: expecting a packet Ping1 of 4508 bytes, got %d.",
@@ -1278,7 +1265,7 @@ func TestDefragPing1and2(t *testing.T) {
 		t.Error("IPv4 defrag: payload Ping1 is not correctly defragmented.")
 	}
 
-	ip = genTestDefrag(t, defrag, testPing2Frag2, true, "Ping2Frag2")
+	ip = genTestDefrag(t, defragmenter, testPing2Frag2, true, "Ping2Frag2")
 	if len(ip.Payload) != 4508 {
 		t.Fatalf("IPv4 defrag: expecting a packet Ping2 of 4508 bytes, got %d.",
 			len(ip.Payload))
@@ -1292,23 +1279,23 @@ func TestDefragPing1and2(t *testing.T) {
 		t.Error("IPv4 defrag: payload Ping2 is not correctly defragmented.")
 	}
 
-	if len(defrag.ipFlows) != 0 {
+	if len(defragmenter.FragmentAggregators) != 0 {
 		t.Error("IPv4 defrag: defrager should be empty.")
 	}
 }
 
 func TestDefragPingTooMuch(t *testing.T) {
-	defrag := NewIPv4Defragmenter()
+	defragmenter := NewIPv4Defragmenter()
 
 	// We inject the 7 fragments, and expect to hit an error at the
 	// 8th fragment
-	genTestDefrag(t, defrag, testPing1Frag1, false, "Ping1Frag1")
-	genTestDefrag(t, defrag, testPing1Frag2, false, "Ping1Frag2")
-	genTestDefrag(t, defrag, testPing1Frag1, false, "Ping1Frag1")
-	genTestDefrag(t, defrag, testPing1Frag2, false, "Ping1Frag2")
-	genTestDefrag(t, defrag, testPing1Frag1, false, "Ping1Frag1")
-	genTestDefrag(t, defrag, testPing1Frag2, false, "Ping1Frag2")
-	genTestDefrag(t, defrag, testPing1Frag1, false, "Ping1Frag1")
+	genTestDefrag(t, defragmenter, testPing1Frag1, false, "Ping1Frag1")
+	genTestDefrag(t, defragmenter, testPing1Frag2, false, "Ping1Frag2")
+	genTestDefrag(t, defragmenter, testPing1Frag1, false, "Ping1Frag1")
+	genTestDefrag(t, defragmenter, testPing1Frag2, false, "Ping1Frag2")
+	genTestDefrag(t, defragmenter, testPing1Frag1, false, "Ping1Frag1")
+	genTestDefrag(t, defragmenter, testPing1Frag2, false, "Ping1Frag2")
+	genTestDefrag(t, defragmenter, testPing1Frag1, false, "Ping1Frag1")
 
 	decoder := layers.Decoder(new(layers.Ethernet))
 	err := decoder.Decode(testPing1Frag1)
@@ -1323,17 +1310,17 @@ func TestDefragPingTooMuch(t *testing.T) {
 		t.Errorf("IPv4 defrag: decode IPv4 error: %s.", err)
 	}
 	in, _ := decoder.(*layers.IPv4)
-	_, err = defrag.DefragIPv4(in)
+	_, err = defragmenter.DefragIPv4(in)
 	if err == nil {
 		t.Fatal("IPv4 defrag: maximum number of fragments are supposed to be 8.")
 	}
 
-	if len(defrag.ipFlows) != 0 {
+	if len(defragmenter.FragmentAggregators) != 0 {
 		t.Error("IPv4 defrag: defrager should be empty.")
 	}
 }
 
-func genTestDefrag(t *testing.T, defrag *IPv4Defragmenter, buf []byte, expect bool, label string) *layers.IPv4 {
+func genTestDefrag(t *testing.T, defragmenter *IPv4Defragmenter, buf []byte, expect bool, label string) *layers.IPv4 {
 	decoder := layers.Decoder(new(layers.Ethernet))
 	err := decoder.Decode(buf)
 	if err != nil {
@@ -1347,7 +1334,7 @@ func genTestDefrag(t *testing.T, defrag *IPv4Defragmenter, buf []byte, expect bo
 		t.Errorf("IPv4 defrag: decode IPv4 error: %s.", err)
 	}
 	in, _ := decoder.(*layers.IPv4)
-	out, err := defrag.DefragIPv4(in)
+	out, err := defragmenter.DefragIPv4(in)
 	if err != nil {
 		t.Fatalf("IPv4 defrag: defrag ip packet error: %s.", err)
 	}

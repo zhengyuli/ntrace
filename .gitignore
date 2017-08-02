@@ -1,8 +1,14 @@
-### Files for C/Golang
+## Files for Tags
+TAGS
+
+### Files for C/Golang Temporary Output
 *.o
 *.a
 *.obj
-TAGS
+
+## Vendor directory
+vendor/
+!vendor/vendor.json
 
 ntrace
 ntrace.log
